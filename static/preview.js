@@ -16,13 +16,20 @@ const BACKGROUNDS = {
   'office-desk': 'assets/background-office-desk.png',
   'cafe-table': 'assets/background-cafe-table.png',
   'dark-studio': 'assets/background-dark-studio.png',
+  'home-office': 'assets/background-home-office.png',
+  'classroom': 'assets/background-classroom.png',
+  'meeting-room': 'assets/background-meeting-room.png',
+  'evening-desk': 'assets/background-evening-desk.png',
+  'kitchen-counter': 'assets/background-kitchen-counter.png',
+  'creator-studio': 'assets/background-creator-studio.png',
 };
 const DEFAULT_SCENE = {
   background: 'reading-room',
   device: 'tablet-pro',
   angle: 'low-desk-left',
   motion: 'slow-push-in',
-  screenZoom: 1.06,
+  motionAmount: 2.2,
+  screenZoom: 1,
   transition: 'soft-fade',
   captionStyle: 'white-chip',
 };
@@ -82,6 +89,7 @@ function applySceneDesign(scene) {
     scene.device,
     scene.angle,
     scene.motion,
+    scene.motionAmount,
     scene.transition,
     scene.captionStyle,
   ].join('|');
@@ -94,6 +102,7 @@ function applySceneDesign(scene) {
     sceneCamera.dataset.motion = scene.motion || DEFAULT_SCENE.motion;
     tabletStage.dataset.device = scene.device || DEFAULT_SCENE.device;
     tabletStage.dataset.angle = scene.angle || DEFAULT_SCENE.angle;
+    setCameraMotionVars(scene);
     sceneCamera.style.animation = 'none';
     void sceneCamera.offsetWidth;
     sceneCamera.style.animation = '';
@@ -103,6 +112,66 @@ function applySceneDesign(scene) {
   const localProgress = Math.min(1, Math.max(0, (screenVideo.currentTime - Number(scene.start || 0)) / localDuration));
   const zoomBase = Number(scene.screenZoom || DEFAULT_SCENE.screenZoom);
   screenVideo.style.transform = `translate3d(0, 0, 0) scale(${zoomBase})`;
+}
+
+function setCameraMotionVars(scene) {
+  const amount = clamp(Number(scene.motionAmount || DEFAULT_SCENE.motionAmount), 0.5, 2.2);
+  const motion = scene.motion || DEFAULT_SCENE.motion;
+  const scale = (base) => Number((1 + base * amount).toFixed(4));
+  const pct = (base) => `${Number((base * amount).toFixed(3))}%`;
+  const vars = {
+    '--camera-start-scale': 1,
+    '--camera-end-scale': scale(0.06),
+    '--camera-start-x': '0%',
+    '--camera-end-x': '0%',
+    '--camera-start-y': '0%',
+    '--camera-mid-x': '0%',
+    '--camera-mid-y': '0%',
+    '--camera-late-x': '0%',
+    '--camera-late-y': '0%',
+    '--camera-end-y': pct(-1.2),
+  };
+
+  if (motion === 'screen-focus') {
+    vars['--camera-start-scale'] = scale(0.02);
+    vars['--camera-end-scale'] = scale(0.1);
+    vars['--camera-end-y'] = pct(-2);
+  } else if (motion === 'pan-left') {
+    vars['--camera-start-scale'] = vars['--camera-end-scale'] = scale(0.06);
+    vars['--camera-start-x'] = pct(2.2);
+    vars['--camera-end-x'] = pct(-2.2);
+    vars['--camera-end-y'] = pct(-1);
+  } else if (motion === 'pan-right') {
+    vars['--camera-start-scale'] = vars['--camera-end-scale'] = scale(0.06);
+    vars['--camera-start-x'] = pct(-2.2);
+    vars['--camera-end-x'] = pct(2.2);
+    vars['--camera-end-y'] = pct(-1);
+  } else if (motion === 'device-tilt') {
+    vars['--camera-start-scale'] = scale(0.055);
+    vars['--camera-mid-scale'] = scale(0.065);
+    vars['--camera-late-scale'] = scale(0.06);
+    vars['--camera-end-scale'] = scale(0.075);
+    vars['--camera-mid-x'] = pct(0.7);
+    vars['--camera-mid-y'] = pct(-0.7);
+    vars['--camera-late-x'] = pct(-0.4);
+    vars['--camera-late-y'] = pct(-1.2);
+    vars['--camera-end-x'] = pct(0.2);
+    vars['--camera-end-y'] = pct(-1.6);
+  } else if (motion === 'cta-push') {
+    vars['--camera-start-scale'] = scale(0.03);
+    vars['--camera-end-scale'] = scale(0.12);
+    vars['--camera-end-y'] = pct(-2.6);
+  } else {
+    vars['--camera-start-scale'] = scale(0.01);
+  }
+
+  Object.entries(vars).forEach(([name, value]) => {
+    sceneCamera.style.setProperty(name, value);
+  });
+}
+
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, Number.isFinite(value) ? value : DEFAULT_SCENE.motionAmount));
 }
 
 function playFromStart() {

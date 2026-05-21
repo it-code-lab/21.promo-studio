@@ -140,7 +140,7 @@ premium-promo-video-studio/
 
 - Rendering is synchronous in this MVP. For large videos, the browser may look busy until rendering finishes.
 - Remotion compositions now resolve duration from each project, capped between 5 and 120 seconds.
-- The default Lifestyle tablet ad template uses `remotion/public/assets/lifestyle-reading-room.png` as a warm desk/reading-room background.
+- The Lifestyle template includes a growing background library in `remotion/public/assets/`, including reading room, office, cafe, studio, home office, classroom, meeting room, evening desk, kitchen counter, and creator studio scenes.
 - The screen recording is muted in the final render. Upload a separate voiceover if you want narration.
 - For best results, record a clean screen video without browser tabs/toolbars when possible.
 

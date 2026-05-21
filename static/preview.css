@@ -95,6 +95,18 @@ body.preview-page {
   transform-origin: center;
   transform-style: preserve-3d;
   will-change: transform;
+  --camera-start-scale: 1.01;
+  --camera-mid-scale: 1.065;
+  --camera-late-scale: 1.06;
+  --camera-end-scale: 1.07;
+  --camera-start-x: 0%;
+  --camera-start-y: 0%;
+  --camera-mid-x: .7%;
+  --camera-mid-y: -.7%;
+  --camera-late-x: -.4%;
+  --camera-late-y: -1.2%;
+  --camera-end-x: 0%;
+  --camera-end-y: -1.2%;
   animation: cameraPush 8s ease-in-out both;
 }
 
@@ -311,7 +323,8 @@ body.preview-page {
   aspect-ratio: 16 / 10;
   border-radius: 18px 18px 8px 8px;
   padding: 1.7%;
-  background: linear-gradient(145deg, #f8fafc, #94a3b8);
+  background: linear-gradient(145deg, #263241, #06080c 58%, #3a4654);
+  box-shadow: 0 34px 70px rgba(0,0,0,.48), inset 0 0 0 3px rgba(255,255,255,.06);
   transform: rotateX(42deg) rotateZ(-3deg);
 }
 
@@ -320,7 +333,8 @@ body.preview-page {
   aspect-ratio: 16 / 10;
   border-radius: 18px;
   padding-top: 5.5%;
-  background: linear-gradient(#e2e8f0 0 13%, #1f2937 13%);
+  background: linear-gradient(#111827 0 13%, #05070b 13%);
+  box-shadow: 0 34px 70px rgba(0,0,0,.5), inset 0 0 0 3px rgba(255,255,255,.07);
   transform: rotateX(18deg) rotateZ(-2deg);
 }
 
@@ -372,8 +386,8 @@ body.clean .preview-stage.square {
 }
 
 @keyframes cameraPush {
-  from { transform: scale(1.01) translate3d(0, 0, 0); }
-  to { transform: scale(1.07) translate3d(0, -1.2%, 0); }
+  from { transform: scale(var(--camera-start-scale)) translate3d(var(--camera-start-x), var(--camera-start-y), 0); }
+  to { transform: scale(var(--camera-end-scale)) translate3d(var(--camera-end-x), var(--camera-end-y), 0); }
 }
 
 @keyframes tabletIn {
@@ -382,30 +396,30 @@ body.clean .preview-stage.square {
 }
 
 @keyframes cameraFocus {
-  from { transform: scale(1.02) translate3d(0, 0, 0); }
-  to { transform: scale(1.1) translate3d(0, -2%, 0); }
+  from { transform: scale(var(--camera-start-scale)) translate3d(var(--camera-start-x), var(--camera-start-y), 0); }
+  to { transform: scale(var(--camera-end-scale)) translate3d(var(--camera-end-x), var(--camera-end-y), 0); }
 }
 
 @keyframes cameraPanLeft {
-  from { transform: scale(1.06) translate3d(2.2%, 0, 0); }
-  to { transform: scale(1.06) translate3d(-2.2%, -1%, 0); }
+  from { transform: scale(var(--camera-start-scale)) translate3d(var(--camera-start-x), var(--camera-start-y), 0); }
+  to { transform: scale(var(--camera-end-scale)) translate3d(var(--camera-end-x), var(--camera-end-y), 0); }
 }
 
 @keyframes cameraPanRight {
-  from { transform: scale(1.06) translate3d(-2.2%, 0, 0); }
-  to { transform: scale(1.06) translate3d(2.2%, -1%, 0); }
+  from { transform: scale(var(--camera-start-scale)) translate3d(var(--camera-start-x), var(--camera-start-y), 0); }
+  to { transform: scale(var(--camera-end-scale)) translate3d(var(--camera-end-x), var(--camera-end-y), 0); }
 }
 
 @keyframes cameraHandheld {
-  0% { transform: scale(1.055) translate3d(0, 0, 0); }
-  35% { transform: scale(1.065) translate3d(.7%, -.7%, 0); }
-  70% { transform: scale(1.06) translate3d(-.4%, -1.2%, 0); }
-  100% { transform: scale(1.075) translate3d(.2%, -1.6%, 0); }
+  0% { transform: scale(var(--camera-start-scale)) translate3d(var(--camera-start-x), var(--camera-start-y), 0); }
+  35% { transform: scale(var(--camera-mid-scale)) translate3d(var(--camera-mid-x), var(--camera-mid-y), 0); }
+  70% { transform: scale(var(--camera-late-scale)) translate3d(var(--camera-late-x), var(--camera-late-y), 0); }
+  100% { transform: scale(var(--camera-end-scale)) translate3d(var(--camera-end-x), var(--camera-end-y), 0); }
 }
 
 @keyframes cameraCtaPush {
-  from { transform: scale(1.03) translate3d(0, 0, 0); }
-  to { transform: scale(1.12) translate3d(0, -2.6%, 0); }
+  from { transform: scale(var(--camera-start-scale)) translate3d(var(--camera-start-x), var(--camera-start-y), 0); }
+  to { transform: scale(var(--camera-end-scale)) translate3d(var(--camera-end-x), var(--camera-end-y), 0); }
 }
 
 @media (max-width: 720px) {

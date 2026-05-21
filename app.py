@@ -30,10 +30,24 @@ DEFAULT_SCENE_DESIGN: dict[str, Any] = {
     "device": "tablet-pro",
     "angle": "low-desk-left",
     "motion": "slow-push-in",
-    "screenZoom": 1.06,
+    "motionAmount": 2.2,
+    "screenZoom": 1,
     "transition": "soft-fade",
     "captionStyle": "white-chip",
 }
+
+BACKGROUND_PRESETS = [
+    "reading-room",
+    "office-desk",
+    "cafe-table",
+    "dark-studio",
+    "home-office",
+    "classroom",
+    "meeting-room",
+    "evening-desk",
+    "kitchen-counter",
+    "creator-studio",
+]
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 2 * 1024 * 1024 * 1024  # 2GB for screen recordings
@@ -129,11 +143,12 @@ def probe_media_duration(path: Path) -> float | None:
 def with_scene_design(scene: dict[str, Any], index: int) -> dict[str, Any]:
     defaults = {
         **DEFAULT_SCENE_DESIGN,
-        "background": ["reading-room", "office-desk", "cafe-table", "dark-studio"][index % 4],
+        "background": BACKGROUND_PRESETS[index % len(BACKGROUND_PRESETS)],
         "device": ["tablet-pro", "laptop-silver", "phone-modern", "browser-window"][index % 4],
         "angle": ["low-desk-left", "front-center", "floating-hero", "low-desk-right"][index % 4],
         "motion": ["slow-push-in", "screen-focus", "device-tilt", "pan-left"][index % 4],
-        "screenZoom": [1.04, 1.12, 1.18, 1.08][index % 4],
+        "motionAmount": [2.2, 2.2, 2.2, 2.2][index % 4],
+        "screenZoom": 1,
         "transition": ["soft-fade", "soft-fade", "slide-up", "clean-cut"][index % 4],
         "captionStyle": ["white-chip", "glass-card", "white-chip", "bold-bottom"][index % 4],
     }

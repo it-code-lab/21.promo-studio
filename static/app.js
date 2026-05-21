@@ -8,6 +8,12 @@ const BACKGROUND_PRESETS = [
   { id: 'office-desk', label: 'Office desk', thumb: '/preview-assets/assets/background-office-desk.png' },
   { id: 'cafe-table', label: 'Cafe table', thumb: '/preview-assets/assets/background-cafe-table.png' },
   { id: 'dark-studio', label: 'Dark studio', thumb: '/preview-assets/assets/background-dark-studio.png' },
+  { id: 'home-office', label: 'Home office', thumb: '/preview-assets/assets/background-home-office.png' },
+  { id: 'classroom', label: 'Classroom', thumb: '/preview-assets/assets/background-classroom.png' },
+  { id: 'meeting-room', label: 'Meeting room', thumb: '/preview-assets/assets/background-meeting-room.png' },
+  { id: 'evening-desk', label: 'Evening desk', thumb: '/preview-assets/assets/background-evening-desk.png' },
+  { id: 'kitchen-counter', label: 'Kitchen counter', thumb: '/preview-assets/assets/background-kitchen-counter.png' },
+  { id: 'creator-studio', label: 'Creator studio', thumb: '/preview-assets/assets/background-creator-studio.png' },
 ];
 
 const DEVICE_PRESETS = [
@@ -19,7 +25,7 @@ const DEVICE_PRESETS = [
 
 const ANGLE_PRESETS = [
   { id: 'low-desk-left', label: 'Low desk left' },
-  { id: 'low-desk-right', label: 'Low desk right' },
+  // { id: 'low-desk-right', label: 'Low desk right' },
   { id: 'front-center', label: 'Front center' },
   { id: 'floating-hero', label: 'Floating hero' },
 ];
@@ -50,7 +56,8 @@ const DEFAULT_DESIGN = {
   device: 'tablet-pro',
   angle: 'low-desk-left',
   motion: 'slow-push-in',
-  screenZoom: 1.06,
+  motionAmount: 2.2,
+  screenZoom: 1,
   transition: 'soft-fade',
   captionStyle: 'white-chip',
 };
@@ -100,6 +107,10 @@ function addScene(scene = {}) {
           Animation
           <select class="scene-motion">${renderOptions(MOTION_PRESETS, design.motion)}</select>
         </label>
+        <label class="design-field zoom-field">
+          Animation amount <strong>${Number(design.motionAmount || DEFAULT_DESIGN.motionAmount).toFixed(2)}×</strong>
+          <input type="range" min="0.5" max="2.2" step="0.05" class="scene-motion-amount" value="${Number(design.motionAmount || DEFAULT_DESIGN.motionAmount)}" />
+        </label>
         <label class="design-field">
           Transition
           <select class="scene-transition">${renderOptions(TRANSITION_PRESETS, design.transition)}</select>
@@ -109,8 +120,8 @@ function addScene(scene = {}) {
           <select class="scene-caption-style">${renderOptions(CAPTION_STYLE_PRESETS, design.captionStyle)}</select>
         </label>
         <label class="design-field zoom-field">
-          Screen zoom <strong>${Number(design.screenZoom || 1.06).toFixed(2)}×</strong>
-          <input type="range" min="1" max="1.6" step="0.01" class="scene-screen-zoom" value="${Number(design.screenZoom || 1.06)}" />
+          Screen zoom <strong>${Number(design.screenZoom || DEFAULT_DESIGN.screenZoom).toFixed(2)}×</strong>
+          <input type="range" min="1" max="1.6" step="0.01" class="scene-screen-zoom" value="${Number(design.screenZoom || DEFAULT_DESIGN.screenZoom)}" />
         </label>
       </div>
     </td>
@@ -119,8 +130,11 @@ function addScene(scene = {}) {
     designRow.remove();
     tr.remove();
   });
+  designRow.querySelector('.scene-motion-amount').addEventListener('input', (event) => {
+    event.target.closest('.zoom-field').querySelector('strong').textContent = `${Number(event.target.value).toFixed(2)}×`;
+  });
   designRow.querySelector('.scene-screen-zoom').addEventListener('input', (event) => {
-    designRow.querySelector('.zoom-field strong').textContent = `${Number(event.target.value).toFixed(2)}×`;
+    event.target.closest('.zoom-field').querySelector('strong').textContent = `${Number(event.target.value).toFixed(2)}×`;
   });
   sceneTableBody.appendChild(tr);
   sceneTableBody.appendChild(designRow);
@@ -153,12 +167,12 @@ function renderDeviceOptions(presets, selected, name) {
 function loadSampleScenes() {
   sceneTableBody.innerHTML = '';
   [
-    { start: 0, end: 4, caption: 'Story time,\njust got smarter', narration: 'Story time just got smarter.', background: 'reading-room', device: 'tablet-pro', angle: 'low-desk-left', motion: 'slow-push-in', screenZoom: 1.06, transition: 'soft-fade', captionStyle: 'white-chip' },
-    { start: 4, end: 9, caption: 'the interactive story companion', narration: 'Meet the interactive story companion for young readers.', background: 'office-desk', device: 'laptop-silver', angle: 'front-center', motion: 'screen-focus', screenZoom: 1.14, transition: 'soft-fade', captionStyle: 'glass-card' },
-    { start: 9, end: 15, caption: 'listen', narration: 'Listen to every line with clear narration.', background: 'cafe-table', device: 'phone-modern', angle: 'floating-hero', motion: 'device-tilt', screenZoom: 1.18, transition: 'slide-up', captionStyle: 'white-chip' },
-    { start: 15, end: 22, caption: 'and tap any word to\nhear it out', narration: 'Tap any word to hear it out and build confidence.', background: 'reading-room', device: 'tablet-pro', angle: 'low-desk-right', motion: 'pan-left', screenZoom: 1.22, transition: 'soft-fade', captionStyle: 'bold-bottom' },
-    { start: 22, end: 26, caption: 'built from your real product', narration: 'Built from your real website or software recording.', background: 'dark-studio', device: 'browser-window', angle: 'front-center', motion: 'pan-right', screenZoom: 1.1, transition: 'clean-cut', captionStyle: 'glass-card' },
-    { start: 26, end: 30, caption: 'Try it free today', narration: 'Try it free today.', background: 'dark-studio', device: 'tablet-pro', angle: 'floating-hero', motion: 'cta-push', screenZoom: 1.08, transition: 'soft-fade', captionStyle: 'white-chip' },
+    { start: 0, end: 4, caption: 'Story time,\njust got smarter', narration: 'Story time just got smarter.', background: 'reading-room', device: 'tablet-pro', angle: 'low-desk-left', motion: 'slow-push-in', motionAmount: 2.2, screenZoom: 1, transition: 'soft-fade', captionStyle: 'white-chip' },
+    { start: 4, end: 9, caption: 'the interactive story companion', narration: 'Meet the interactive story companion for young readers.', background: 'office-desk', device: 'laptop-silver', angle: 'front-center', motion: 'screen-focus', motionAmount: 2.2, screenZoom: 1, transition: 'soft-fade', captionStyle: 'glass-card' },
+    { start: 9, end: 15, caption: 'listen', narration: 'Listen to every line with clear narration.', background: 'cafe-table', device: 'phone-modern', angle: 'floating-hero', motion: 'device-tilt', motionAmount: 2.2, screenZoom: 1, transition: 'slide-up', captionStyle: 'white-chip' },
+    { start: 15, end: 22, caption: 'and tap any word to\nhear it out', narration: 'Tap any word to hear it out and build confidence.', background: 'home-office', device: 'tablet-pro', angle: 'low-desk-right', motion: 'pan-left', motionAmount: 2.2, screenZoom: 1, transition: 'soft-fade', captionStyle: 'bold-bottom' },
+    { start: 22, end: 26, caption: 'built from your real product', narration: 'Built from your real website or software recording.', background: 'meeting-room', device: 'browser-window', angle: 'front-center', motion: 'pan-right', motionAmount: 2.2, screenZoom: 1, transition: 'clean-cut', captionStyle: 'glass-card' },
+    { start: 26, end: 30, caption: 'Try it free today', narration: 'Try it free today.', background: 'creator-studio', device: 'tablet-pro', angle: 'floating-hero', motion: 'cta-push', motionAmount: 2.2, screenZoom: 1, transition: 'soft-fade', captionStyle: 'white-chip' },
   ].forEach(addScene);
 }
 
@@ -174,6 +188,7 @@ function collectScenes() {
       device: checkedValue(designRow, '.scene-device', DEFAULT_DESIGN.device),
       angle: designRow.querySelector('.scene-angle').value,
       motion: designRow.querySelector('.scene-motion').value,
+      motionAmount: Number(designRow.querySelector('.scene-motion-amount').value || DEFAULT_DESIGN.motionAmount),
       screenZoom: Number(designRow.querySelector('.scene-screen-zoom').value || DEFAULT_DESIGN.screenZoom),
       transition: designRow.querySelector('.scene-transition').value,
       captionStyle: designRow.querySelector('.scene-caption-style').value,

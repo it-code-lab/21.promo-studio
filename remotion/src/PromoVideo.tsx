@@ -18,10 +18,21 @@ type Scene = {
   end: number;
   caption: string;
   narration?: string;
-  background?: 'reading-room' | 'office-desk' | 'cafe-table' | 'dark-studio';
+  background?:
+    | 'reading-room'
+    | 'office-desk'
+    | 'cafe-table'
+    | 'dark-studio'
+    | 'home-office'
+    | 'classroom'
+    | 'meeting-room'
+    | 'evening-desk'
+    | 'kitchen-counter'
+    | 'creator-studio';
   device?: 'tablet-pro' | 'phone-modern' | 'laptop-silver' | 'browser-window';
   angle?: 'low-desk-left' | 'low-desk-right' | 'front-center' | 'floating-hero';
   motion?: 'slow-push-in' | 'screen-focus' | 'pan-left' | 'pan-right' | 'device-tilt' | 'cta-push';
+  motionAmount?: number;
   screenZoom?: number;
   transition?: 'soft-fade' | 'clean-cut' | 'slide-up';
   captionStyle?: 'white-chip' | 'glass-card' | 'bold-bottom';
@@ -75,7 +86,8 @@ const sceneDefaults: Required<Omit<Scene, 'caption' | 'narration'>> = {
   device: 'tablet-pro',
   angle: 'low-desk-left',
   motion: 'slow-push-in',
-  screenZoom: 1.06,
+  motionAmount: 2.2,
+  screenZoom: 1,
   transition: 'soft-fade',
   captionStyle: 'white-chip',
 };
@@ -94,6 +106,12 @@ const backgroundAssets = {
   'office-desk': 'assets/background-office-desk.png',
   'cafe-table': 'assets/background-cafe-table.png',
   'dark-studio': 'assets/background-dark-studio.png',
+  'home-office': 'assets/background-home-office.png',
+  'classroom': 'assets/background-classroom.png',
+  'meeting-room': 'assets/background-meeting-room.png',
+  'evening-desk': 'assets/background-evening-desk.png',
+  'kitchen-counter': 'assets/background-kitchen-counter.png',
+  'creator-studio': 'assets/background-creator-studio.png',
 };
 
 export const PromoVideo: React.FC<PromoProps> = (props) => {
@@ -229,7 +247,7 @@ const LifestylePromo: React.FC<PromoProps & {screenSrc: string | null; voiceSrc:
   const sceneFrame = Math.max(0, frame - Math.round(scene.start * fps));
   const sceneFrames = Math.max(1, Math.round((scene.end - scene.start) * fps));
   const sceneProgress = Math.min(1, sceneFrame / sceneFrames);
-  const camera = cameraTransform(scene.motion, sceneProgress);
+  const camera = cameraTransform(scene.motion, sceneProgress, scene.motionAmount);
 
   return (
     <AbsoluteFill style={{backgroundColor: '#eee2cf', overflow: 'hidden', fontFamily: 'Inter, Arial, sans-serif'}}>
@@ -403,7 +421,7 @@ const LifestyleDeviceStage: React.FC<{
           <ScreenVideo
             screenSrc={screenSrc}
             radius={deviceRadius(scene.device, isLandscape)}
-            zoom={Number(scene.screenZoom || 1.06)}
+            zoom={Number(scene.screenZoom || sceneDefaults.screenZoom)}
             loopFrames={screenLoopFrames}
           />
         </div>
@@ -504,7 +522,8 @@ function deviceShellStyle(device: NonNullable<Scene['device']>, isLandscape: boo
       aspectRatio: '16 / 10',
       padding: isLandscape ? 16 : 20,
       borderRadius: '34px 34px 16px 16px',
-      background: 'linear-gradient(145deg, #f8fafc, #94a3b8)',
+      background: 'linear-gradient(145deg, #263241, #06080c 58%, #3a4654)',
+      boxShadow: '0 32px 70px rgba(0,0,0,0.48), inset 0 0 0 3px rgba(255,255,255,0.06)',
     };
   }
   if (device === 'browser-window') {
@@ -513,7 +532,8 @@ function deviceShellStyle(device: NonNullable<Scene['device']>, isLandscape: boo
       aspectRatio: '16 / 10',
       padding: isLandscape ? '46px 16px 16px' : '56px 20px 20px',
       borderRadius: 28,
-      background: 'linear-gradient(#e2e8f0 0 15%, #1f2937 15%)',
+      background: 'linear-gradient(#111827 0 15%, #05070b 15%)',
+      boxShadow: '0 32px 70px rgba(0,0,0,0.5), inset 0 0 0 3px rgba(255,255,255,0.07)',
     };
   }
   return {
@@ -533,23 +553,26 @@ function angleTransform(angle: NonNullable<Scene['angle']>, device: NonNullable<
   return isLandscape ? 'rotateX(58deg) rotateZ(-7deg)' : isSquare ? 'rotateX(55deg) rotateZ(-8deg)' : 'rotateX(54deg) rotateZ(-9deg)';
 }
 
-function cameraTransform(motion: NonNullable<Scene['motion']>, progress: number): string {
+function cameraTransform(motion: NonNullable<Scene['motion']>, progress: number, motionAmount = sceneDefaults.motionAmount): string {
+  const amount = Math.min(2.2, Math.max(0.5, Number.isFinite(motionAmount) ? motionAmount : sceneDefaults.motionAmount));
+  const scale = (base: number) => 1 + base * amount;
+  const px = (base: number) => base * amount;
   if (motion === 'screen-focus') {
-    return `scale(${interpolate(progress, [0, 1], [1.02, 1.1])}) translateY(${interpolate(progress, [0, 1], [0, -22])}px)`;
+    return `scale(${interpolate(progress, [0, 1], [scale(0.02), scale(0.1)])}) translateY(${interpolate(progress, [0, 1], [0, px(-22)])}px)`;
   }
   if (motion === 'pan-left') {
-    return `scale(1.06) translate(${interpolate(progress, [0, 1], [24, -24])}px, ${interpolate(progress, [0, 1], [0, -12])}px)`;
+    return `scale(${scale(0.06)}) translate(${interpolate(progress, [0, 1], [px(24), px(-24)])}px, ${interpolate(progress, [0, 1], [0, px(-12)])}px)`;
   }
   if (motion === 'pan-right') {
-    return `scale(1.06) translate(${interpolate(progress, [0, 1], [-24, 24])}px, ${interpolate(progress, [0, 1], [0, -12])}px)`;
+    return `scale(${scale(0.06)}) translate(${interpolate(progress, [0, 1], [px(-24), px(24)])}px, ${interpolate(progress, [0, 1], [0, px(-12)])}px)`;
   }
   if (motion === 'device-tilt') {
-    return `scale(${interpolate(progress, [0, 1], [1.055, 1.075])}) translate(${Math.sin(progress * Math.PI * 2) * 5}px, ${interpolate(progress, [0, 1], [0, -18])}px)`;
+    return `scale(${interpolate(progress, [0, 1], [scale(0.055), scale(0.075)])}) translate(${Math.sin(progress * Math.PI * 2) * px(5)}px, ${interpolate(progress, [0, 1], [0, px(-18)])}px)`;
   }
   if (motion === 'cta-push') {
-    return `scale(${interpolate(progress, [0, 1], [1.03, 1.12])}) translateY(${interpolate(progress, [0, 1], [0, -28])}px)`;
+    return `scale(${interpolate(progress, [0, 1], [scale(0.03), scale(0.12)])}) translateY(${interpolate(progress, [0, 1], [0, px(-28)])}px)`;
   }
-  return `scale(${interpolate(progress, [0, 1], [1.01, 1.07])}) translateY(${interpolate(progress, [0, 1], [0, -14])}px)`;
+  return `scale(${interpolate(progress, [0, 1], [scale(0.01), scale(0.07)])}) translateY(${interpolate(progress, [0, 1], [0, px(-14)])}px)`;
 }
 
 function deviceInset(device: NonNullable<Scene['device']>, isLandscape: boolean): number | string {
