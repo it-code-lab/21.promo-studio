@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Premium Promo Video Studio</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <div class="shell">
+    <header class="hero">
+      <div>
+        <p class="eyebrow">ReaderNook Lab Prototype</p>
+        <h1>Premium Promo Video Studio</h1>
+        <p class="subtitle">Turn your Screenity or OBS recording into a polished Creatify-style website/software ad.</p>
+      </div>
+      <div class="hero-card">
+        <span class="dot"></span>
+        <strong>MVP Flow</strong>
+        <p>Upload recording → add caption beats → render Remotion MP4</p>
+      </div>
+    </header>
+
+    <main class="grid">
+      <section class="panel">
+        <div class="panel-title">
+          <h2>Create Project</h2>
+          <span>Step 1</span>
+        </div>
+
+        <form id="projectForm">
+          <div class="two-col">
+            <label>
+              Project title
+              <input name="title" value="ReadBright Promo" required />
+            </label>
+            <label>
+              Product name
+              <input name="productName" value="ReadBright" required />
+            </label>
+          </div>
+
+          <label>
+            Website / product URL
+            <input name="targetUrl" value="https://lab.readernook.com/" />
+          </label>
+
+          <div class="two-col">
+            <label>
+              CTA text
+              <input name="cta" value="Try it free today" />
+            </label>
+            <label>
+              Duration seconds
+              <input name="durationSeconds" type="number" min="5" max="120" value="30" />
+            </label>
+          </div>
+
+          <div class="two-col">
+            <label>
+              Format
+              <select name="format">
+                <option value="vertical" selected>Vertical 9:16 - Shorts/Reels</option>
+                <option value="landscape">Landscape 16:9 - YouTube</option>
+                <option value="square">Square 1:1 - Social</option>
+              </select>
+            </label>
+            <label>
+              Template
+              <select name="template">
+                <option value="lifestyle" selected>Lifestyle tablet ad</option>
+                <option value="tablet">Gradient tablet demo</option>
+                <option value="laptop">Laptop SaaS demo</option>
+                <option value="phone">Phone app demo</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="upload-row">
+            <label class="upload-box">
+              <span>Screen recording video</span>
+              <input name="screenRecording" type="file" accept="video/mp4,video/webm,video/quicktime,video/x-matroska" required />
+            </label>
+            <label class="upload-box muted">
+              <span>Optional voiceover</span>
+              <input name="voiceover" type="file" accept="audio/*" />
+            </label>
+            <label class="upload-box muted">
+              <span>Optional logo</span>
+              <input name="logo" type="file" accept="image/*" />
+            </label>
+          </div>
+
+          <div class="panel-title small">
+            <h2>Scene captions</h2>
+            <span>Step 2</span>
+          </div>
+
+          <div class="scene-actions">
+            <button type="button" id="addSceneBtn" class="secondary">+ Add scene</button>
+            <button type="button" id="loadSampleBtn" class="secondary">Load sample scenes</button>
+          </div>
+
+          <div class="table-wrap">
+            <table id="sceneTable">
+              <thead>
+                <tr>
+                  <th>Start</th>
+                  <th>End</th>
+                  <th>Caption</th>
+                  <th>Narration / notes</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+
+          <button class="primary" type="submit">Save Project</button>
+        </form>
+
+        <div id="message" class="message hidden"></div>
+      </section>
+
+      <aside class="panel side-panel">
+        <div class="panel-title">
+          <h2>Projects</h2>
+          <button id="refreshProjectsBtn" class="secondary small-btn">Refresh</button>
+        </div>
+        <div id="projectsList" class="projects-list"></div>
+      </aside>
+    </main>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

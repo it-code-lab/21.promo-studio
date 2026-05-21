@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{{ project.title }} Preview</title>
+  <link rel="stylesheet" href="/static/preview.css?v={{ static_version }}" />
+</head>
+<body class="preview-page" data-project-id="{{ project.id }}">
+  <main class="preview-shell">
+    <section class="preview-toolbar">
+      <a href="/" class="toolbar-link">Back</a>
+      <div>
+        <h1>{{ project.title }}</h1>
+        <p>{{ project.productName }} · {{ project.format }} · {{ project.durationSeconds }}s</p>
+      </div>
+      <div class="toolbar-actions">
+        <button id="replayBtn" type="button">Replay</button>
+        <button id="cleanBtn" type="button">Clean view</button>
+        {% if project.outputUrl %}
+          <a href="{{ project.outputUrl }}" target="_blank" class="toolbar-link">MP4</a>
+        {% endif %}
+      </div>
+    </section>
+
+    <section id="previewStage" class="preview-stage vertical">
+      <div class="scene-camera">
+        <img id="backgroundImage" class="room-bg" alt="" />
+        <div class="warm-overlay"></div>
+        <div class="tablet-stage">
+          <div class="tablet-shell">
+            <video id="screenVideo" muted playsinline></video>
+            <div class="tablet-glass"></div>
+          </div>
+        </div>
+      </div>
+      <img id="logoImage" class="preview-logo hidden" alt="" />
+      <div id="captionChip" class="caption-chip"></div>
+      <div id="ctaPill" class="cta-pill hidden"></div>
+    </section>
+  </main>
+
+  <script id="projectData" type="application/json">{{ project | tojson }}</script>
+  <script src="/static/preview.js?v={{ static_version }}"></script>
+</body>
+</html>

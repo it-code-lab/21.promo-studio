@@ -1,0 +1,105 @@
+{
+  "id": "20260521_155547_readbright-promo",
+  "title": "ReadBright Promo",
+  "productName": "ReadBright",
+  "targetUrl": "https://lab.readernook.com/",
+  "cta": "Try it free today",
+  "format": "vertical",
+  "template": "lifestyle",
+  "durationSeconds": 30,
+  "fps": 30,
+  "status": "draft",
+  "createdAt": "2026-05-21T15:55:47",
+  "assets": {
+    "screen": "projects/20260521_155547_readbright-promo/screen.mp4",
+    "screenDurationSeconds": 21.916,
+    "voiceover": null,
+    "logo": null
+  },
+  "scenes": [
+    {
+      "background": "reading-room",
+      "device": "tablet-pro",
+      "angle": "low-desk-left",
+      "motion": "slow-push-in",
+      "screenZoom": 1.06,
+      "transition": "soft-fade",
+      "captionStyle": "white-chip",
+      "start": 0,
+      "end": 4,
+      "caption": "Story time,\njust got smarter",
+      "narration": "Story time just got smarter."
+    },
+    {
+      "background": "office-desk",
+      "device": "laptop-silver",
+      "angle": "front-center",
+      "motion": "screen-focus",
+      "screenZoom": 1.14,
+      "transition": "soft-fade",
+      "captionStyle": "glass-card",
+      "start": 4,
+      "end": 9,
+      "caption": "the interactive story companion",
+      "narration": "Meet the interactive story companion for young readers."
+    },
+    {
+      "background": "cafe-table",
+      "device": "phone-modern",
+      "angle": "floating-hero",
+      "motion": "device-tilt",
+      "screenZoom": 1.18,
+      "transition": "slide-up",
+      "captionStyle": "white-chip",
+      "start": 9,
+      "end": 15,
+      "caption": "listen",
+      "narration": "Listen to every line with clear narration."
+    },
+    {
+      "background": "reading-room",
+      "device": "tablet-pro",
+      "angle": "low-desk-right",
+      "motion": "pan-left",
+      "screenZoom": 1.22,
+      "transition": "soft-fade",
+      "captionStyle": "bold-bottom",
+      "start": 15,
+      "end": 22,
+      "caption": "and tap any word to\nhear it out",
+      "narration": "Tap any word to hear it out and build confidence."
+    },
+    {
+      "background": "dark-studio",
+      "device": "browser-window",
+      "angle": "front-center",
+      "motion": "pan-right",
+      "screenZoom": 1.1,
+      "transition": "clean-cut",
+      "captionStyle": "glass-card",
+      "start": 22,
+      "end": 26,
+      "caption": "built from your real product",
+      "narration": "Built from your real website or software recording."
+    },
+    {
+      "background": "dark-studio",
+      "device": "tablet-pro",
+      "angle": "floating-hero",
+      "motion": "cta-push",
+      "screenZoom": 1.08,
+      "transition": "soft-fade",
+      "captionStyle": "white-chip",
+      "start": 26,
+      "end": 30,
+      "caption": "Try it free today",
+      "narration": "Try it free today."
+    }
+  ],
+  "render": {
+    "lastStartedAt": null,
+    "lastFinishedAt": null,
+    "lastError": null,
+    "logFile": null
+  }
+}
