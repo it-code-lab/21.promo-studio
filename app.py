@@ -67,6 +67,14 @@ def write_project(project_id: str, data: dict[str, Any]) -> None:
     (project_dir / "project.json").write_text(json.dumps(data, indent=2), encoding="utf-8")
 
 
+def child_path(root: Path, *parts: str) -> Path:
+    root_resolved = root.resolve()
+    target = (root / Path(*parts)).resolve()
+    if target != root_resolved and root_resolved not in target.parents:
+        raise ValueError("Resolved path is outside the expected directory.")
+    return target
+
+
 def normalize_project(project: dict[str, Any]) -> dict[str, Any]:
     normalized = dict(project)
     scenes = normalized.get("scenes", [])
@@ -253,6 +261,27 @@ def get_project(project_id: str):
         return jsonify({"project": read_project(project_id)})
     except FileNotFoundError:
         return jsonify({"error": "Project not found."}), 404
+
+
+@app.delete("/api/projects/<project_id>")
+def delete_project(project_id: str):
+    try:
+        project_dir = child_path(PROJECTS_DIR, project_id)
+        public_dir = child_path(REMOTION_PUBLIC_PROJECTS, project_id)
+        output_file = child_path(OUTPUTS_DIR, f"{project_id}.mp4")
+    except ValueError:
+        return jsonify({"error": "Invalid project id."}), 400
+
+    if not project_dir.exists():
+        return jsonify({"error": "Project not found."}), 404
+
+    shutil.rmtree(project_dir)
+    if public_dir.exists():
+        shutil.rmtree(public_dir)
+    if output_file.exists():
+        output_file.unlink()
+
+    return jsonify({"deleted": True, "id": project_id})
 
 
 @app.get("/preview-assets/<path:filename>")

@@ -5,6 +5,7 @@ import {
   Img,
   Loop,
   OffthreadVideo,
+  Video,
   interpolate,
   spring,
   staticFile,
@@ -402,7 +403,7 @@ const LifestyleDeviceStage: React.FC<{
           <ScreenVideo
             screenSrc={screenSrc}
             radius={deviceRadius(scene.device, isLandscape)}
-            zoom={Number(scene.screenZoom || 1.06) + (scene.motion === 'screen-focus' ? sceneProgress * 0.1 : 0)}
+            zoom={Number(scene.screenZoom || 1.06)}
             loopFrames={screenLoopFrames}
           />
         </div>
@@ -572,7 +573,22 @@ const ScreenVideo: React.FC<{screenSrc: string | null; radius: number; zoom?: nu
   if (!screenSrc) {
     return <div style={{width: '100%', height: '100%', background: 'linear-gradient(135deg,#1e293b,#0f172a)', borderRadius: radius}} />;
   }
-  const video = <OffthreadVideo src={screenSrc} muted style={{width: '100%', height: '100%', objectFit: 'cover', borderRadius: radius, transform: `scale(${zoom})`}} />;
+  const video = (
+    <Video
+      src={screenSrc}
+      muted
+      style={{
+        width: '100%',
+        height: '100%',
+        objectFit: 'cover',
+        borderRadius: radius,
+        transform: `translate3d(0, 0, 0) scale(${zoom})`,
+        transformOrigin: 'center center',
+        backfaceVisibility: 'hidden',
+        willChange: 'transform',
+      }}
+    />
+  );
   return loopFrames && loopFrames > 1 ? <Loop durationInFrames={loopFrames}>{video}</Loop> : video;
 };
 

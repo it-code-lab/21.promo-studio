@@ -29,7 +29,7 @@ const MOTION_PRESETS = [
   { id: 'screen-focus', label: 'Screen focus' },
   { id: 'pan-left', label: 'Pan left' },
   { id: 'pan-right', label: 'Pan right' },
-  { id: 'device-tilt', label: 'Device tilt' },
+  { id: 'device-tilt', label: 'Handheld camera' },
   { id: 'cta-push', label: 'CTA push' },
 ];
 
@@ -211,6 +211,7 @@ async function loadProjects() {
       <div class="card-actions">
         ${preview}
         <button class="secondary render-btn" data-id="${project.id}">Render MP4</button>
+        <button class="danger-btn delete-project-btn" data-id="${project.id}">Delete</button>
         ${output}
       </div>
     `;
@@ -219,6 +220,9 @@ async function loadProjects() {
 
   projectsList.querySelectorAll('.render-btn').forEach(btn => {
     btn.addEventListener('click', async () => renderProject(btn.dataset.id, btn));
+  });
+  projectsList.querySelectorAll('.delete-project-btn').forEach(btn => {
+    btn.addEventListener('click', async () => deleteProject(btn.dataset.id, btn));
   });
 }
 
@@ -237,6 +241,24 @@ async function renderProject(projectId, button) {
   } finally {
     button.disabled = false;
     button.textContent = 'Render MP4';
+  }
+}
+
+async function deleteProject(projectId, button) {
+  const ok = window.confirm('Delete this project, uploaded assets, and rendered MP4?');
+  if (!ok) return;
+  button.disabled = true;
+  button.textContent = 'Deleting...';
+  try {
+    const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}`, { method: 'DELETE' });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Could not delete project');
+    showMessage(`Deleted project: ${projectId}`, 'success');
+    await loadProjects();
+  } catch (err) {
+    showMessage(String(err.message || err), 'error');
+    button.disabled = false;
+    button.textContent = 'Delete';
   }
 }
 

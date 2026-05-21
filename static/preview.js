@@ -102,8 +102,7 @@ function applySceneDesign(scene) {
   const localDuration = Math.max(0.5, Number(scene.end || duration) - Number(scene.start || 0));
   const localProgress = Math.min(1, Math.max(0, (screenVideo.currentTime - Number(scene.start || 0)) / localDuration));
   const zoomBase = Number(scene.screenZoom || DEFAULT_SCENE.screenZoom);
-  const motionBoost = scene.motion === 'screen-focus' ? localProgress * 0.1 : scene.motion === 'cta-push' ? localProgress * 0.06 : 0;
-  screenVideo.style.transform = `scale(${zoomBase + motionBoost})`;
+  screenVideo.style.transform = `translate3d(0, 0, 0) scale(${zoomBase})`;
 }
 
 function playFromStart() {
