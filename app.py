@@ -36,7 +36,7 @@ DEFAULT_SCENE_DESIGN: dict[str, Any] = {
     "transition": "soft-fade",
     "captionStyle": "white-chip",
     "captionPosition": "auto",
-    "captionAnimation": "rise",
+    "captionAnimation": "none",
     "captionSize": "standard",
     "captionAccent": "none",
     "captionAnimationAmount": 1.4,
@@ -246,7 +246,7 @@ def with_scene_design(scene: dict[str, Any], index: int) -> dict[str, Any]:
         "transition": ["soft-fade", "soft-fade", "slide-up", "clean-cut"][index % 4],
         "captionStyle": CAPTION_STYLE_PRESETS[index % len(CAPTION_STYLE_PRESETS)],
         "captionPosition": ["top", "top", "top", "bottom", "bottom", "device"][index % 6],
-        "captionAnimation": ["pop", "rise", "slide-mask", "rise", "type-on", "pop"][index % 6],
+        "captionAnimation": "none",
         "captionSize": ["large", "standard", "compact", "hero", "standard", "large"][index % 6],
         "captionAccent": ["last-word", "none", "first-word", "last-word", "none", "first-word"][index % 6],
         "captionAnimationAmount": 1.4,
@@ -412,6 +412,7 @@ def create_project():
         screen_info = probe_media_info(public_dir / screen_filename) if screen_filename else None
         scenes = [with_scene_design(scene, index) for index, scene in enumerate(scenes)]
         voiceover_filename = save_upload(request.files.get("voiceover"), public_dir, "voiceover", ALLOWED_AUDIO_EXTENSIONS)
+        background_music_filename = save_upload(request.files.get("backgroundMusic"), public_dir, "background-music", ALLOWED_AUDIO_EXTENSIONS)
         logo_filename = save_upload(request.files.get("logo"), public_dir, "logo", ALLOWED_IMAGE_EXTENSIONS)
         clips: list[dict[str, Any]] = []
         if isinstance(clip_rows, list):
@@ -460,6 +461,7 @@ def create_project():
                 "screenWidth": screen_info.get("width") if screen_info else None,
                 "screenHeight": screen_info.get("height") if screen_info else None,
                 "voiceover": f"projects/{project_id}/{voiceover_filename}" if voiceover_filename else None,
+                "backgroundMusic": f"projects/{project_id}/{background_music_filename}" if background_music_filename else None,
                 "logo": f"projects/{project_id}/{logo_filename}" if logo_filename else None,
             },
             "scenes": scenes,
@@ -575,6 +577,7 @@ def render_project(project_id: str):
         "screenAsset": project.get("assets", {}).get("screen"),
         "screenDurationSeconds": project.get("assets", {}).get("screenDurationSeconds") or probe_media_duration(REMOTION_PUBLIC_DIR / str(project.get("assets", {}).get("screen", ""))),
         "voiceoverAsset": project.get("assets", {}).get("voiceover"),
+        "backgroundMusicAsset": project.get("assets", {}).get("backgroundMusic"),
         "logoAsset": project.get("assets", {}).get("logo"),
         "scenes": project.get("scenes", []),
         "clips": project.get("clips", []),

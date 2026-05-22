@@ -66,11 +66,11 @@ const CAPTION_POSITION_PRESETS = [
 ];
 
 const CAPTION_ANIMATION_PRESETS = [
+  { id: 'none', label: 'None' },
   { id: 'rise', label: 'Fade rise' },
   { id: 'pop', label: 'Pop' },
   { id: 'slide-mask', label: 'Slide mask' },
   { id: 'type-on', label: 'Type on' },
-  { id: 'none', label: 'None' },
 ];
 
 const CAPTION_SIZE_PRESETS = [
@@ -103,7 +103,7 @@ const DEFAULT_DESIGN = {
   transition: 'soft-fade',
   captionStyle: 'white-chip',
   captionPosition: 'auto',
-  captionAnimation: 'rise',
+  captionAnimation: 'none',
   captionSize: 'standard',
   captionAccent: 'none',
   captionAnimationAmount: 1.4,
@@ -264,12 +264,12 @@ function addClip(clip = {}) {
 function loadSampleScenes() {
   sceneTableBody.innerHTML = '';
   [
-    { start: 0, end: 4, caption: 'Story time,\njust got smarter', narration: 'Story time just got smarter.', background: 'reading-room', device: 'tablet-pro', angle: 'low-desk-left', motion: 'slow-push-in', motionAmount: 2.2, screenZoom: 1, transition: 'soft-fade', captionStyle: 'editorial-card', captionPosition: 'top', captionAnimation: 'pop', captionSize: 'large', captionAccent: 'last-word', captionAnimationAmount: 1.65 },
-    { start: 4, end: 9, caption: 'the interactive story companion', narration: 'Meet the interactive story companion for young readers.', background: 'office-desk', device: 'laptop-silver', angle: 'front-center', motion: 'screen-focus', motionAmount: 2.2, screenZoom: 1, transition: 'soft-fade', captionStyle: 'glass-card', captionPosition: 'top', captionAnimation: 'rise', captionSize: 'standard', captionAccent: 'none', captionAnimationAmount: 1.4 },
-    { start: 9, end: 15, caption: 'listen', narration: 'Listen to every line with clear narration.', background: 'cafe-table', device: 'phone-modern', angle: 'floating-hero', motion: 'device-tilt', motionAmount: 2.2, screenZoom: 1, transition: 'slide-up', captionStyle: 'neon-ribbon', captionPosition: 'top', captionAnimation: 'slide-mask', captionSize: 'compact', captionAccent: 'first-word', captionAnimationAmount: 1.7 },
-    { start: 15, end: 22, caption: 'and tap any word to\nhear it out', narration: 'Tap any word to hear it out and build confidence.', background: 'home-office', device: 'tablet-pro', angle: 'low-desk-right', motion: 'pan-left', motionAmount: 2.2, screenZoom: 1, transition: 'soft-fade', captionStyle: 'bold-bottom', captionPosition: 'bottom', captionAnimation: 'rise', captionSize: 'hero', captionAccent: 'last-word', captionAnimationAmount: 1.55 },
-    { start: 22, end: 26, caption: 'built from your real product', narration: 'Built from your real website or software recording.', background: 'meeting-room', device: 'browser-window', angle: 'front-center', motion: 'pan-right', motionAmount: 2.2, screenZoom: 1, transition: 'clean-cut', captionStyle: 'minimal-subtitle', captionPosition: 'bottom', captionAnimation: 'type-on', captionSize: 'standard', captionAccent: 'none', captionAnimationAmount: 1.2 },
-    { start: 26, end: 30, caption: 'Try it free today', narration: 'Try it free today.', background: 'creator-studio', device: 'tablet-pro', angle: 'floating-hero', motion: 'cta-push', motionAmount: 2.2, screenZoom: 1, transition: 'soft-fade', captionStyle: 'device-callout', captionPosition: 'device', captionAnimation: 'pop', captionSize: 'large', captionAccent: 'first-word', captionAnimationAmount: 1.8 },
+    { start: 0, end: 4, caption: 'Story time,\njust got smarter', narration: 'Story time just got smarter.', background: 'reading-room', device: 'tablet-pro', angle: 'low-desk-left', motion: 'slow-push-in', motionAmount: 2.2, screenZoom: 1, transition: 'soft-fade', captionStyle: 'editorial-card', captionPosition: 'top', captionAnimation: 'none', captionSize: 'large', captionAccent: 'last-word', captionAnimationAmount: 1.65 },
+    { start: 4, end: 9, caption: 'the interactive story companion', narration: 'Meet the interactive story companion for young readers.', background: 'office-desk', device: 'laptop-silver', angle: 'front-center', motion: 'screen-focus', motionAmount: 2.2, screenZoom: 1, transition: 'soft-fade', captionStyle: 'glass-card', captionPosition: 'top', captionAnimation: 'none', captionSize: 'standard', captionAccent: 'none', captionAnimationAmount: 1.4 },
+    { start: 9, end: 15, caption: 'listen', narration: 'Listen to every line with clear narration.', background: 'cafe-table', device: 'phone-modern', angle: 'floating-hero', motion: 'device-tilt', motionAmount: 2.2, screenZoom: 1, transition: 'slide-up', captionStyle: 'neon-ribbon', captionPosition: 'top', captionAnimation: 'none', captionSize: 'compact', captionAccent: 'first-word', captionAnimationAmount: 1.7 },
+    { start: 15, end: 22, caption: 'and tap any word to\nhear it out', narration: 'Tap any word to hear it out and build confidence.', background: 'home-office', device: 'tablet-pro', angle: 'low-desk-right', motion: 'pan-left', motionAmount: 2.2, screenZoom: 1, transition: 'soft-fade', captionStyle: 'bold-bottom', captionPosition: 'bottom', captionAnimation: 'none', captionSize: 'hero', captionAccent: 'last-word', captionAnimationAmount: 1.55 },
+    { start: 22, end: 26, caption: 'built from your real product', narration: 'Built from your real website or software recording.', background: 'meeting-room', device: 'browser-window', angle: 'front-center', motion: 'pan-right', motionAmount: 2.2, screenZoom: 1, transition: 'clean-cut', captionStyle: 'minimal-subtitle', captionPosition: 'bottom', captionAnimation: 'none', captionSize: 'standard', captionAccent: 'none', captionAnimationAmount: 1.2 },
+    { start: 26, end: 30, caption: 'Try it free today', narration: 'Try it free today.', background: 'creator-studio', device: 'tablet-pro', angle: 'floating-hero', motion: 'cta-push', motionAmount: 2.2, screenZoom: 1, transition: 'soft-fade', captionStyle: 'device-callout', captionPosition: 'device', captionAnimation: 'none', captionSize: 'large', captionAccent: 'first-word', captionAnimationAmount: 1.8 },
   ].forEach(addScene);
 }
 

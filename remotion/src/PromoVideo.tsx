@@ -65,6 +65,7 @@ export type PromoProps = {
   screenAsset: string;
   screenDurationSeconds?: number | null;
   voiceoverAsset?: string | null;
+  backgroundMusicAsset?: string | null;
   logoAsset?: string | null;
   scenes: Scene[];
   clips?: TimelineClip[];
@@ -82,6 +83,7 @@ export const defaultPromoProps: PromoProps = {
   screenAsset: 'sample-screen.mp4',
   screenDurationSeconds: null,
   voiceoverAsset: null,
+  backgroundMusicAsset: null,
   logoAsset: null,
   clips: [],
   scenes: [
@@ -108,7 +110,7 @@ const sceneDefaults: Required<Omit<Scene, 'caption' | 'narration'>> = {
   transition: 'soft-fade',
   captionStyle: 'white-chip',
   captionPosition: 'auto',
-  captionAnimation: 'rise',
+  captionAnimation: 'none',
   captionSize: 'standard',
   captionAccent: 'none',
   captionAnimationAmount: 1.4,
@@ -144,10 +146,11 @@ export const PromoVideo: React.FC<PromoProps> = (props) => {
   const clips = Array.isArray(props.clips) ? props.clips : [];
   const screenSrc = safeStatic(props.screenAsset);
   const voiceSrc = safeStatic(props.voiceoverAsset);
+  const musicSrc = safeStatic(props.backgroundMusicAsset);
   const logoSrc = safeStatic(props.logoAsset);
 
   if (props.template === 'lifestyle') {
-    return <LifestylePromo {...props} screenSrc={screenSrc} voiceSrc={voiceSrc} logoSrc={logoSrc} />;
+    return <LifestylePromo {...props} screenSrc={screenSrc} voiceSrc={voiceSrc} musicSrc={musicSrc} logoSrc={logoSrc} />;
   }
 
   const entrance = spring({frame, fps, config: {damping: 18, stiffness: 120}});
@@ -243,11 +246,12 @@ export const PromoVideo: React.FC<PromoProps> = (props) => {
 
       {ctaVisible ? <CtaEndCard cta={props.cta} isLandscape={isLandscape} /> : null}
       {voiceSrc ? <Audio src={voiceSrc} /> : null}
+      {musicSrc ? <Audio src={musicSrc} volume={0.18} /> : null}
     </AbsoluteFill>
   );
 };
 
-const LifestylePromo: React.FC<PromoProps & {screenSrc: string | null; voiceSrc: string | null; logoSrc: string | null}> = (props) => {
+const LifestylePromo: React.FC<PromoProps & {screenSrc: string | null; voiceSrc: string | null; musicSrc: string | null; logoSrc: string | null}> = (props) => {
   const frame = useCurrentFrame();
   const {fps} = useVideoConfig();
   const seconds = frame / fps;
@@ -348,6 +352,7 @@ const LifestylePromo: React.FC<PromoProps & {screenSrc: string | null; voiceSrc:
 
       {ctaVisible ? <LifestyleCta cta={props.cta} isLandscape={isLandscape} isSquare={isSquare} startFrame={Math.round(ctaStartSeconds * fps)} /> : null}
       {props.voiceSrc ? <Audio src={props.voiceSrc} /> : null}
+      {props.musicSrc ? <Audio src={props.musicSrc} volume={0.18} /> : null}
     </AbsoluteFill>
   );
 };

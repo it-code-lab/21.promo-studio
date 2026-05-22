@@ -5,6 +5,10 @@ const backgroundImage = document.querySelector('#backgroundImage');
 const logoImage = document.querySelector('#logoImage');
 const captionChip = document.querySelector('#captionChip');
 const ctaPill = document.querySelector('#ctaPill');
+const playBtn = document.querySelector('#playBtn');
+const pauseBtn = document.querySelector('#pauseBtn');
+const resumeBtn = document.querySelector('#resumeBtn');
+const stopBtn = document.querySelector('#stopBtn');
 const replayBtn = document.querySelector('#replayBtn');
 const cleanBtn = document.querySelector('#cleanBtn');
 const sceneCamera = document.querySelector('.scene-camera');
@@ -17,6 +21,15 @@ const captionHighlightSelect = document.querySelector('#previewHighlightMode');
 const captionSizeSelect = document.querySelector('#previewCaptionSize');
 const resetCaptionPreviewBtn = document.querySelector('#resetCaptionPreviewBtn');
 const captionTimingBadge = document.querySelector('#captionTimingBadge');
+const voiceoverAudio = document.querySelector('#voiceoverAudio');
+const musicAudio = document.querySelector('#musicAudio');
+const voiceoverEnabled = document.querySelector('#voiceoverEnabled');
+const voiceoverVolume = document.querySelector('#voiceoverVolume');
+const voiceoverVolumeValue = document.querySelector('#voiceoverVolumeValue');
+const musicEnabled = document.querySelector('#musicEnabled');
+const musicVolume = document.querySelector('#musicVolume');
+const musicVolumeValue = document.querySelector('#musicVolumeValue');
+const audioStatus = document.querySelector('#audioStatus');
 
 const assetUrl = (path) => path ? `/preview-assets/${path}` : '';
 const BACKGROUNDS = {
@@ -41,7 +54,7 @@ const DEFAULT_SCENE = {
   transition: 'soft-fade',
   captionStyle: 'white-chip',
   captionPosition: 'auto',
-  captionAnimation: 'rise',
+  captionAnimation: 'none',
   captionSize: 'standard',
   captionAccent: 'none',
   captionAnimationAmount: 1.4,
@@ -66,11 +79,16 @@ const captionTimeline = scenes.map((scene) => {
   return { scene, words, timingSource: words.some((word) => word.source === 'voiceover') ? 'voiceover' : 'estimated' };
 });
 const previewSettingsKey = `promo-preview-captions:${project.id || 'default'}`;
+const audioSettingsKey = `promo-preview-audio:${project.id || 'default'}`;
 let activeSceneKey = '';
 let animationFrame = null;
 let activeCaptionGroupKey = '';
 let lastCaptionRenderKey = '';
 let previewCaptionSettings = loadPreviewCaptionSettings();
+let previewAudioSettings = loadPreviewAudioSettings();
+let playbackState = 'stopped';
+let previewStartedAt = 0;
+let pausedProjectTime = 0;
 
 stage.classList.remove('vertical', 'landscape', 'square');
 stage.classList.add(project.format || 'vertical');
@@ -78,6 +96,14 @@ backgroundImage.src = assetUrl(BACKGROUNDS[DEFAULT_SCENE.background]);
 
 if (project.assets?.screen) {
   screenVideo.src = assetUrl(project.assets.screen);
+}
+
+if (project.assets?.voiceover && voiceoverAudio) {
+  voiceoverAudio.src = assetUrl(project.assets.voiceover);
+}
+
+if (project.assets?.backgroundMusic && musicAudio) {
+  musicAudio.src = assetUrl(project.assets.backgroundMusic);
 }
 
 if (project.assets?.logo) {
@@ -203,7 +229,7 @@ function wordProgress(word, seconds) {
 }
 
 function updatePreview() {
-  const seconds = screenVideo.currentTime || 0;
+  const seconds = currentProjectTime();
   const entry = activeSceneEntry(seconds);
   const scene = entry.scene;
   applySceneDesign(scene);
@@ -213,8 +239,8 @@ function updatePreview() {
   ctaPill.classList.toggle('hidden', seconds < ctaStart);
 
   if (seconds >= duration) {
-    screenVideo.pause();
-  } else {
+    stopPreview({ reset: false, render: false });
+  } else if (playbackState === 'playing') {
     animationFrame = requestAnimationFrame(updatePreview);
   }
 }
@@ -233,10 +259,9 @@ function applySceneDesign(scene) {
     scene.transition,
     captionStyle,
     captionPosition,
-    scene.captionAnimation,
+    'none',
     captionSize,
     scene.captionAccent,
-    scene.captionAnimationAmount,
     previewCaptionSettings.wordsPerGroup,
     previewCaptionSettings.highlightMode,
   ].join('|');
@@ -247,25 +272,21 @@ function applySceneDesign(scene) {
     stage.dataset.transition = scene.transition || DEFAULT_SCENE.transition;
     stage.dataset.captionStyle = captionStyle;
     stage.dataset.captionPosition = captionPosition;
-    stage.dataset.captionAnimation = scene.captionAnimation || DEFAULT_SCENE.captionAnimation;
+    stage.dataset.captionAnimation = 'none';
     stage.dataset.captionSize = captionSize;
     stage.dataset.captionAccent = scene.captionAccent || DEFAULT_SCENE.captionAccent;
     stage.dataset.highlightMode = previewCaptionSettings.highlightMode || 'word';
     sceneCamera.dataset.motion = scene.motion || DEFAULT_SCENE.motion;
     tabletStage.dataset.device = scene.device || DEFAULT_SCENE.device;
     tabletStage.dataset.angle = scene.angle || DEFAULT_SCENE.angle;
-    setCaptionMotionVars(scene);
     setCameraMotionVars(scene);
     sceneCamera.style.animation = 'none';
-    captionChip.style.animation = 'none';
     void sceneCamera.offsetWidth;
-    void captionChip.offsetWidth;
     sceneCamera.style.animation = '';
-    captionChip.style.animation = '';
   }
 
   const localDuration = Math.max(0.5, Number(scene.end || duration) - Number(scene.start || 0));
-  const localProgress = Math.min(1, Math.max(0, (screenVideo.currentTime - Number(scene.start || 0)) / localDuration));
+  const localProgress = Math.min(1, Math.max(0, (currentProjectTime() - Number(scene.start || 0)) / localDuration));
   const zoomBase = Number(scene.screenZoom || DEFAULT_SCENE.screenZoom);
   screenVideo.style.transform = `translate3d(0, 0, 0) scale(${zoomBase})`;
 }
@@ -350,11 +371,146 @@ function clamp(value, min, max) {
   return Math.min(max, Math.max(min, Number.isFinite(value) ? value : DEFAULT_SCENE.motionAmount));
 }
 
-function playFromStart() {
+function mediaElements() {
+  return [screenVideo, voiceoverAudio, musicAudio].filter(Boolean);
+}
+
+function currentProjectTime() {
+  if (playbackState === 'playing') {
+    return Math.min(duration, Math.max(0, (performance.now() - previewStartedAt) / 1000));
+  }
+  return Math.min(duration, Math.max(0, pausedProjectTime));
+}
+
+function audibleElements() {
+  const items = [];
+  if (voiceoverAudio?.src && previewAudioSettings.voiceoverEnabled) items.push(voiceoverAudio);
+  if (musicAudio?.src && previewAudioSettings.musicEnabled) items.push(musicAudio);
+  return items;
+}
+
+function syncAudioToVideo() {
+  const seconds = currentProjectTime();
+  audibleElements().forEach((media) => {
+    try {
+      media.currentTime = media === musicAudio && media.duration && Number.isFinite(media.duration)
+        ? seconds % media.duration
+        : seconds;
+    } catch {
+      // Some browsers disallow setting currentTime until metadata is ready.
+    }
+  });
+}
+
+function applyAudioSettings() {
+  if (voiceoverAudio) {
+    voiceoverAudio.volume = previewAudioSettings.voiceoverVolume;
+    voiceoverAudio.muted = !previewAudioSettings.voiceoverEnabled || !voiceoverAudio.src;
+  }
+  if (musicAudio) {
+    musicAudio.volume = previewAudioSettings.musicVolume;
+    musicAudio.muted = !previewAudioSettings.musicEnabled || !musicAudio.src;
+  }
+  if (voiceoverEnabled) voiceoverEnabled.checked = previewAudioSettings.voiceoverEnabled;
+  if (voiceoverVolume) voiceoverVolume.value = String(previewAudioSettings.voiceoverVolume);
+  if (voiceoverVolumeValue) voiceoverVolumeValue.textContent = `${Math.round(previewAudioSettings.voiceoverVolume * 100)}%`;
+  if (musicEnabled) musicEnabled.checked = previewAudioSettings.musicEnabled;
+  if (musicVolume) musicVolume.value = String(previewAudioSettings.musicVolume);
+  if (musicVolumeValue) musicVolumeValue.textContent = `${Math.round(previewAudioSettings.musicVolume * 100)}%`;
+  updateAudioStatus();
+}
+
+function updateAudioStatus(message = '') {
+  if (!audioStatus) return;
+  const hasVoice = Boolean(voiceoverAudio?.src);
+  const hasMusic = Boolean(musicAudio?.src);
+  audioStatus.textContent = message || [
+    hasVoice ? 'Voiceover' : '',
+    hasMusic ? 'Music' : '',
+  ].filter(Boolean).join(' + ') || 'No preview audio';
+  audioStatus.classList.toggle('has-audio', hasVoice || hasMusic);
+}
+
+function loadPreviewAudioSettings() {
+  const defaults = {
+    voiceoverEnabled: true,
+    voiceoverVolume: 0.9,
+    musicEnabled: true,
+    musicVolume: 0.18,
+  };
+  try {
+    return { ...defaults, ...JSON.parse(localStorage.getItem(audioSettingsKey) || '{}') };
+  } catch {
+    return defaults;
+  }
+}
+
+function savePreviewAudioSettings() {
+  localStorage.setItem(audioSettingsKey, JSON.stringify(previewAudioSettings));
+}
+
+async function playSyncedMedia({ fromStart = false } = {}) {
   if (animationFrame) cancelAnimationFrame(animationFrame);
-  screenVideo.currentTime = 0;
-  screenVideo.play();
+  if (fromStart) {
+    pausedProjectTime = 0;
+  }
+  previewStartedAt = performance.now() - pausedProjectTime * 1000;
+  try {
+    if (Number.isFinite(screenVideo.duration) && screenVideo.duration > 0) {
+      screenVideo.currentTime = pausedProjectTime % screenVideo.duration;
+    } else {
+      screenVideo.currentTime = pausedProjectTime;
+    }
+  } catch {
+    // Ignore media that is not seekable yet.
+  }
+  syncAudioToVideo();
+  applyAudioSettings();
+  playbackState = 'playing';
+  updatePlaybackButtons();
+  const playPromises = [screenVideo, ...audibleElements()].map((media) => media.play().catch((error) => error));
+  const results = await Promise.all(playPromises);
+  const blocked = results.find((result) => result instanceof Error);
+  if (blocked) {
+    updateAudioStatus('Click Play to enable audio');
+  }
   animationFrame = requestAnimationFrame(updatePreview);
+}
+
+function pausePreview() {
+  if (animationFrame) cancelAnimationFrame(animationFrame);
+  pausedProjectTime = currentProjectTime();
+  playbackState = 'paused';
+  mediaElements().forEach((media) => media.pause());
+  updatePlaybackButtons();
+  updatePreview();
+}
+
+function stopPreview({ reset = true, render = true } = {}) {
+  if (animationFrame) cancelAnimationFrame(animationFrame);
+  pausedProjectTime = reset ? 0 : currentProjectTime();
+  playbackState = 'stopped';
+  mediaElements().forEach((media) => {
+    media.pause();
+    if (reset) {
+      try {
+        media.currentTime = 0;
+      } catch {
+        // Ignore media that is not seekable yet.
+      }
+    }
+  });
+  activeCaptionGroupKey = '';
+  lastCaptionRenderKey = '';
+  updatePlaybackButtons();
+  if (render) updatePreview();
+}
+
+function updatePlaybackButtons() {
+  playBtn?.toggleAttribute('disabled', playbackState === 'playing');
+  pauseBtn?.toggleAttribute('disabled', playbackState !== 'playing');
+  resumeBtn?.toggleAttribute('disabled', playbackState !== 'paused');
+  stopBtn?.toggleAttribute('disabled', playbackState === 'stopped');
 }
 
 function renderCaptionStyleTray() {
@@ -454,20 +610,67 @@ function wireCaptionControls() {
   });
 }
 
+function wireAudioControls() {
+  applyAudioSettings();
+  voiceoverEnabled?.addEventListener('change', () => {
+    previewAudioSettings.voiceoverEnabled = voiceoverEnabled.checked;
+    savePreviewAudioSettings();
+    applyAudioSettings();
+    if (playbackState === 'playing') {
+      syncAudioToVideo();
+      if (previewAudioSettings.voiceoverEnabled && voiceoverAudio?.src) voiceoverAudio.play().catch(() => updateAudioStatus('Click Play to enable audio'));
+    }
+  });
+  voiceoverVolume?.addEventListener('input', () => {
+    previewAudioSettings.voiceoverVolume = Number(voiceoverVolume.value || 0);
+    savePreviewAudioSettings();
+    applyAudioSettings();
+  });
+  musicEnabled?.addEventListener('change', () => {
+    previewAudioSettings.musicEnabled = musicEnabled.checked;
+    savePreviewAudioSettings();
+    applyAudioSettings();
+    if (playbackState === 'playing') {
+      syncAudioToVideo();
+      if (previewAudioSettings.musicEnabled && musicAudio?.src) musicAudio.play().catch(() => updateAudioStatus('Click Play to enable audio'));
+    }
+  });
+  musicVolume?.addEventListener('input', () => {
+    previewAudioSettings.musicVolume = Number(musicVolume.value || 0);
+    savePreviewAudioSettings();
+    applyAudioSettings();
+  });
+}
+
 screenVideo.addEventListener('loadedmetadata', () => {
   if (duration > screenVideo.duration && Number.isFinite(screenVideo.duration)) {
     screenVideo.loop = true;
   }
-  playFromStart();
+  stopPreview();
 });
 
 screenVideo.addEventListener('play', () => {
   if (animationFrame) cancelAnimationFrame(animationFrame);
+  playbackState = 'playing';
+  updatePlaybackButtons();
   animationFrame = requestAnimationFrame(updatePreview);
 });
-screenVideo.addEventListener('pause', updatePreview);
-screenVideo.addEventListener('seeked', updatePreview);
-replayBtn.addEventListener('click', playFromStart);
+screenVideo.addEventListener('pause', () => {
+  if (playbackState === 'playing') {
+    pausePreview();
+  } else if (playbackState !== 'stopped') {
+    updatePreview();
+  }
+});
+screenVideo.addEventListener('seeked', () => {
+  syncAudioToVideo();
+  updatePreview();
+});
+playBtn?.addEventListener('click', () => playSyncedMedia({ fromStart: playbackState === 'stopped' }));
+pauseBtn?.addEventListener('click', pausePreview);
+resumeBtn?.addEventListener('click', () => playSyncedMedia());
+stopBtn?.addEventListener('click', () => stopPreview());
+replayBtn.addEventListener('click', () => playSyncedMedia({ fromStart: true }));
 
 cleanBtn.addEventListener('click', () => {
   document.body.classList.toggle('clean');
@@ -480,3 +683,6 @@ if (!project.assets?.screen) {
 
 renderCaptionStyleTray();
 wireCaptionControls();
+wireAudioControls();
+updatePlaybackButtons();
+updatePreview();

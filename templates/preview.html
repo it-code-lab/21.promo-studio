@@ -15,6 +15,10 @@
         <p>{{ project.productName }} · {{ project.format }} · {{ project.durationSeconds }}s</p>
       </div>
       <div class="toolbar-actions">
+        <button id="playBtn" type="button">Play</button>
+        <button id="pauseBtn" type="button">Pause</button>
+        <button id="resumeBtn" type="button">Resume</button>
+        <button id="stopBtn" type="button">Stop</button>
         <button id="replayBtn" type="button">Replay</button>
         <button id="cleanBtn" type="button">Clean view</button>
         {% if project.outputUrl %}
@@ -61,6 +65,27 @@
       <button id="resetCaptionPreviewBtn" type="button">Reset</button>
       <span id="captionTimingBadge" class="caption-timing-badge">Timing: estimated</span>
     </section>
+    <section class="audio-controls" aria-label="Preview audio controls">
+      <label>
+        <span>Voiceover</span>
+        <input id="voiceoverEnabled" type="checkbox" checked />
+      </label>
+      <label class="volume-field">
+        Voice volume
+        <input id="voiceoverVolume" type="range" min="0" max="1" step="0.01" value="0.9" />
+        <strong id="voiceoverVolumeValue">90%</strong>
+      </label>
+      <label>
+        <span>Music</span>
+        <input id="musicEnabled" type="checkbox" checked />
+      </label>
+      <label class="volume-field">
+        Music volume
+        <input id="musicVolume" type="range" min="0" max="1" step="0.01" value="0.18" />
+        <strong id="musicVolumeValue">18%</strong>
+      </label>
+      <span id="audioStatus" class="audio-status">Audio ready</span>
+    </section>
 
     <section id="previewStage" class="preview-stage vertical">
       <div class="scene-camera">
@@ -77,6 +102,8 @@
       <div id="captionChip" class="caption-chip"></div>
       <div id="ctaPill" class="cta-pill hidden"></div>
     </section>
+    <audio id="voiceoverAudio" preload="auto"></audio>
+    <audio id="musicAudio" preload="auto" loop></audio>
   </main>
 
   <script id="projectData" type="application/json">{{ project | tojson }}</script>
