@@ -9,6 +9,7 @@ const replayBtn = document.querySelector('#replayBtn');
 const cleanBtn = document.querySelector('#cleanBtn');
 const sceneCamera = document.querySelector('.scene-camera');
 const tabletStage = document.querySelector('.tablet-stage');
+const captionStyleTray = document.querySelector('#captionStyleTray');
 
 const assetUrl = (path) => path ? `/preview-assets/${path}` : '';
 const BACKGROUNDS = {
@@ -32,12 +33,28 @@ const DEFAULT_SCENE = {
   screenZoom: 1,
   transition: 'soft-fade',
   captionStyle: 'white-chip',
+  captionPosition: 'auto',
+  captionAnimation: 'rise',
+  captionSize: 'standard',
+  captionAccent: 'none',
+  captionAnimationAmount: 1.4,
 };
+const CAPTION_STYLE_PRESETS = [
+  { id: 'white-chip', label: 'White chip', sample: 'Clean' },
+  { id: 'glass-card', label: 'Glass card', sample: 'Glass' },
+  { id: 'bold-bottom', label: 'Bold bottom', sample: 'Bold' },
+  { id: 'editorial-card', label: 'Editorial card', sample: 'Editorial' },
+  { id: 'neon-ribbon', label: 'Neon ribbon', sample: 'Accent' },
+  { id: 'kinetic-stack', label: 'Kinetic stack', sample: 'Stack' },
+  { id: 'minimal-subtitle', label: 'Minimal subtitle', sample: 'Subtitle' },
+  { id: 'device-callout', label: 'Device callout', sample: 'Callout' },
+];
 const scenes = Array.isArray(project.scenes) ? project.scenes : [];
 const duration = Math.max(5, Number(project.durationSeconds || 30));
 const ctaStart = Math.max(0, duration - 5.6);
 let activeSceneKey = '';
 let animationFrame = null;
+let previewCaptionStyleOverride = '';
 
 stage.classList.remove('vertical', 'landscape', 'square');
 stage.classList.add(project.format || 'vertical');
@@ -59,12 +76,34 @@ function activeScene(seconds) {
   return { ...DEFAULT_SCENE, ...scene };
 }
 
-function setCaption(caption) {
+function setCaption(caption, scene) {
   captionChip.innerHTML = '';
   String(caption || project.title || '').split(/\n+/).filter(Boolean).forEach((line) => {
     const span = document.createElement('span');
-    span.textContent = line;
+    appendAccentedText(span, line, scene?.captionAccent || DEFAULT_SCENE.captionAccent);
     captionChip.appendChild(span);
+  });
+}
+
+function appendAccentedText(root, text, accent) {
+  const words = String(text || '').split(/(\s+)/);
+  const wordIndexes = words
+    .map((part, index) => /\S/.test(part) ? index : -1)
+    .filter(index => index >= 0);
+  const accentIndex = accent === 'first-word'
+    ? wordIndexes[0]
+    : accent === 'last-word'
+      ? wordIndexes[wordIndexes.length - 1]
+      : -1;
+
+  words.forEach((part, index) => {
+    if (index === accentIndex) {
+      const mark = document.createElement('mark');
+      mark.textContent = part;
+      root.appendChild(mark);
+    } else {
+      root.appendChild(document.createTextNode(part));
+    }
   });
 }
 
@@ -72,7 +111,8 @@ function updatePreview() {
   const seconds = screenVideo.currentTime || 0;
   const scene = activeScene(seconds);
   applySceneDesign(scene);
-  setCaption(scene?.caption || project.title);
+  setCaption(scene?.caption || project.title, scene);
+  setTraySelected(previewCaptionStyleOverride || scene.captionStyle || DEFAULT_SCENE.captionStyle);
   ctaPill.classList.toggle('hidden', seconds < ctaStart);
 
   if (seconds >= duration) {
@@ -83,6 +123,7 @@ function updatePreview() {
 }
 
 function applySceneDesign(scene) {
+  const captionStyle = previewCaptionStyleOverride || scene.captionStyle || DEFAULT_SCENE.captionStyle;
   const sceneKey = [
     scene.start,
     scene.background,
@@ -91,27 +132,48 @@ function applySceneDesign(scene) {
     scene.motion,
     scene.motionAmount,
     scene.transition,
-    scene.captionStyle,
+    captionStyle,
+    scene.captionPosition,
+    scene.captionAnimation,
+    scene.captionSize,
+    scene.captionAccent,
+    scene.captionAnimationAmount,
   ].join('|');
 
   if (activeSceneKey !== sceneKey) {
     activeSceneKey = sceneKey;
     backgroundImage.src = assetUrl(BACKGROUNDS[scene.background] || BACKGROUNDS[DEFAULT_SCENE.background]);
     stage.dataset.transition = scene.transition || DEFAULT_SCENE.transition;
-    stage.dataset.captionStyle = scene.captionStyle || DEFAULT_SCENE.captionStyle;
+    stage.dataset.captionStyle = captionStyle;
+    stage.dataset.captionPosition = scene.captionPosition || DEFAULT_SCENE.captionPosition;
+    stage.dataset.captionAnimation = scene.captionAnimation || DEFAULT_SCENE.captionAnimation;
+    stage.dataset.captionSize = scene.captionSize || DEFAULT_SCENE.captionSize;
+    stage.dataset.captionAccent = scene.captionAccent || DEFAULT_SCENE.captionAccent;
     sceneCamera.dataset.motion = scene.motion || DEFAULT_SCENE.motion;
     tabletStage.dataset.device = scene.device || DEFAULT_SCENE.device;
     tabletStage.dataset.angle = scene.angle || DEFAULT_SCENE.angle;
+    setCaptionMotionVars(scene);
     setCameraMotionVars(scene);
     sceneCamera.style.animation = 'none';
+    captionChip.style.animation = 'none';
     void sceneCamera.offsetWidth;
+    void captionChip.offsetWidth;
     sceneCamera.style.animation = '';
+    captionChip.style.animation = '';
   }
 
   const localDuration = Math.max(0.5, Number(scene.end || duration) - Number(scene.start || 0));
   const localProgress = Math.min(1, Math.max(0, (screenVideo.currentTime - Number(scene.start || 0)) / localDuration));
   const zoomBase = Number(scene.screenZoom || DEFAULT_SCENE.screenZoom);
   screenVideo.style.transform = `translate3d(0, 0, 0) scale(${zoomBase})`;
+}
+
+function setCaptionMotionVars(scene) {
+  const amount = clamp(Number(scene.captionAnimationAmount || DEFAULT_SCENE.captionAnimationAmount), 0.5, 2.2);
+  captionChip.style.setProperty('--caption-rise-y', `${Math.round(16 * amount)}px`);
+  captionChip.style.setProperty('--caption-pop-start', String(Math.max(0.76, 1 - (0.12 * amount))));
+  captionChip.style.setProperty('--caption-slide-x', `${Math.round(-18 * amount)}px`);
+  captionChip.style.setProperty('--caption-type-steps', '22');
 }
 
 function setCameraMotionVars(scene) {
@@ -181,6 +243,32 @@ function playFromStart() {
   animationFrame = requestAnimationFrame(updatePreview);
 }
 
+function renderCaptionStyleTray() {
+  if (!captionStyleTray) return;
+  captionStyleTray.innerHTML = CAPTION_STYLE_PRESETS.map((preset) => `
+    <button type="button" class="caption-style-pick ${preset.id}" data-style="${preset.id}">
+      <span class="caption-style-preview"><b>${preset.sample}</b><em>Product</em></span>
+      <span>${preset.label}</span>
+    </button>
+  `).join('');
+  captionStyleTray.querySelectorAll('button').forEach((button) => {
+    button.addEventListener('click', () => {
+      const nextStyle = button.dataset.style || '';
+      previewCaptionStyleOverride = previewCaptionStyleOverride === nextStyle ? '' : nextStyle;
+      activeSceneKey = '';
+      updatePreview();
+    });
+  });
+}
+
+function setTraySelected(style) {
+  if (!captionStyleTray) return;
+  captionStyleTray.querySelectorAll('button').forEach((button) => {
+    button.classList.toggle('active', button.dataset.style === style);
+    button.classList.toggle('override', Boolean(previewCaptionStyleOverride) && button.dataset.style === style);
+  });
+}
+
 screenVideo.addEventListener('loadedmetadata', () => {
   if (duration > screenVideo.duration && Number.isFinite(screenVideo.duration)) {
     screenVideo.loop = true;
@@ -202,5 +290,7 @@ cleanBtn.addEventListener('click', () => {
 });
 
 if (!project.assets?.screen) {
-  setCaption(project.title);
+  setCaption(project.title, DEFAULT_SCENE);
 }
+
+renderCaptionStyleTray();

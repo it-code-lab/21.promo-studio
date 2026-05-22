@@ -141,6 +141,7 @@ premium-promo-video-studio/
 - Rendering is synchronous in this MVP. For large videos, the browser may look busy until rendering finishes.
 - Remotion compositions now resolve duration from each project, capped between 5 and 120 seconds.
 - The Lifestyle template includes a growing background library in `remotion/public/assets/`, including reading room, office, cafe, studio, home office, classroom, meeting room, evening desk, kitchen counter, and creator studio scenes.
+- Voiceover transcription uses Python via `faster-whisper`; the first run may download/load the configured local model.
 - The screen recording is muted in the final render. Upload a separate voiceover if you want narration.
 - For best results, record a clean screen video without browser tabs/toolbars when possible.
 

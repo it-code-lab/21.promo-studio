@@ -1,4 +1,5 @@
 const sceneTableBody = document.querySelector('#sceneTable tbody');
+const clipTableBody = document.querySelector('#clipTable tbody');
 const projectForm = document.querySelector('#projectForm');
 const message = document.querySelector('#message');
 const projectsList = document.querySelector('#projectsList');
@@ -25,7 +26,7 @@ const DEVICE_PRESETS = [
 
 const ANGLE_PRESETS = [
   { id: 'low-desk-left', label: 'Low desk left' },
-  // { id: 'low-desk-right', label: 'Low desk right' },
+  { id: 'low-desk-right', label: 'Low desk right' },
   { id: 'front-center', label: 'Front center' },
   { id: 'floating-hero', label: 'Floating hero' },
 ];
@@ -46,9 +47,50 @@ const TRANSITION_PRESETS = [
 ];
 
 const CAPTION_STYLE_PRESETS = [
-  { id: 'white-chip', label: 'White chip' },
-  { id: 'glass-card', label: 'Glass card' },
-  { id: 'bold-bottom', label: 'Bold bottom' },
+  { id: 'white-chip', label: 'White chip', sample: 'Clean' },
+  { id: 'glass-card', label: 'Glass card', sample: 'Glass' },
+  { id: 'bold-bottom', label: 'Bold bottom', sample: 'Bold' },
+  { id: 'editorial-card', label: 'Editorial card', sample: 'Editorial' },
+  { id: 'neon-ribbon', label: 'Neon ribbon', sample: 'Accent' },
+  { id: 'kinetic-stack', label: 'Kinetic stack', sample: 'Stack' },
+  { id: 'minimal-subtitle', label: 'Minimal subtitle', sample: 'Subtitle' },
+  { id: 'device-callout', label: 'Device callout', sample: 'Callout' },
+];
+
+const CAPTION_POSITION_PRESETS = [
+  { id: 'auto', label: 'Auto' },
+  { id: 'top', label: 'Top' },
+  { id: 'center', label: 'Center' },
+  { id: 'bottom', label: 'Bottom' },
+  { id: 'device', label: 'Near device' },
+];
+
+const CAPTION_ANIMATION_PRESETS = [
+  { id: 'rise', label: 'Fade rise' },
+  { id: 'pop', label: 'Pop' },
+  { id: 'slide-mask', label: 'Slide mask' },
+  { id: 'type-on', label: 'Type on' },
+  { id: 'none', label: 'None' },
+];
+
+const CAPTION_SIZE_PRESETS = [
+  { id: 'compact', label: 'Compact' },
+  { id: 'standard', label: 'Standard' },
+  { id: 'large', label: 'Large' },
+  { id: 'hero', label: 'Hero' },
+];
+
+const CAPTION_ACCENT_PRESETS = [
+  { id: 'none', label: 'None' },
+  { id: 'first-word', label: 'First word' },
+  { id: 'last-word', label: 'Last word' },
+];
+
+const CLIP_MODE_PRESETS = [
+  { id: 'device-screen', label: 'Device screen' },
+  { id: 'full-screen', label: 'Full screen' },
+  { id: 'background', label: 'Background' },
+  { id: 'overlay', label: 'Overlay' },
 ];
 
 const DEFAULT_DESIGN = {
@@ -60,6 +102,11 @@ const DEFAULT_DESIGN = {
   screenZoom: 1,
   transition: 'soft-fade',
   captionStyle: 'white-chip',
+  captionPosition: 'auto',
+  captionAnimation: 'rise',
+  captionSize: 'standard',
+  captionAccent: 'none',
+  captionAnimationAmount: 1.4,
 };
 
 function showMessage(text, type = '') {
@@ -79,8 +126,8 @@ function addScene(scene = {}) {
   tr.className = 'scene-main';
   tr.dataset.designRow = rowId;
   tr.innerHTML = `
-    <td><input type="number" step="0.1" min="0" class="scene-start" value="${scene.start ?? ''}" /></td>
-    <td><input type="number" step="0.1" min="0" class="scene-end" value="${scene.end ?? ''}" /></td>
+    <td><input type="number" step="0.01" min="0" class="scene-start" value="${scene.start ?? ''}" /></td>
+    <td><input type="number" step="0.01" min="0" class="scene-end" value="${scene.end ?? ''}" /></td>
     <td><textarea rows="2" class="scene-caption">${escapeHtml(scene.caption ?? '')}</textarea></td>
     <td><textarea rows="2" class="scene-narration">${escapeHtml(scene.narration ?? '')}</textarea></td>
     <td><button type="button" class="delete">×</button></td>
@@ -115,13 +162,33 @@ function addScene(scene = {}) {
           Transition
           <select class="scene-transition">${renderOptions(TRANSITION_PRESETS, design.transition)}</select>
         </label>
-        <label class="design-field">
-          Caption
-          <select class="scene-caption-style">${renderOptions(CAPTION_STYLE_PRESETS, design.captionStyle)}</select>
-        </label>
         <label class="design-field zoom-field">
           Screen zoom <strong>${Number(design.screenZoom || DEFAULT_DESIGN.screenZoom).toFixed(2)}×</strong>
           <input type="range" min="1" max="1.6" step="0.01" class="scene-screen-zoom" value="${Number(design.screenZoom || DEFAULT_DESIGN.screenZoom)}" />
+        </label>
+        <div class="design-field caption-style-field wide">
+          <span>Caption style</span>
+          <div class="caption-style-options">${renderCaptionStyleOptions(CAPTION_STYLE_PRESETS, design.captionStyle, `${rowId}-caption`)}</div>
+        </div>
+        <label class="design-field">
+          Caption position
+          <select class="scene-caption-position">${renderOptions(CAPTION_POSITION_PRESETS, design.captionPosition)}</select>
+        </label>
+        <label class="design-field">
+          Caption animation
+          <select class="scene-caption-animation">${renderOptions(CAPTION_ANIMATION_PRESETS, design.captionAnimation)}</select>
+        </label>
+        <label class="design-field">
+          Caption size
+          <select class="scene-caption-size">${renderOptions(CAPTION_SIZE_PRESETS, design.captionSize)}</select>
+        </label>
+        <label class="design-field">
+          Caption accent
+          <select class="scene-caption-accent">${renderOptions(CAPTION_ACCENT_PRESETS, design.captionAccent)}</select>
+        </label>
+        <label class="design-field zoom-field">
+          Caption motion <strong>${Number(design.captionAnimationAmount || DEFAULT_DESIGN.captionAnimationAmount).toFixed(2)}×</strong>
+          <input type="range" min="0.5" max="2.2" step="0.05" class="scene-caption-animation-amount" value="${Number(design.captionAnimationAmount || DEFAULT_DESIGN.captionAnimationAmount)}" />
         </label>
       </div>
     </td>
@@ -134,6 +201,9 @@ function addScene(scene = {}) {
     event.target.closest('.zoom-field').querySelector('strong').textContent = `${Number(event.target.value).toFixed(2)}×`;
   });
   designRow.querySelector('.scene-screen-zoom').addEventListener('input', (event) => {
+    event.target.closest('.zoom-field').querySelector('strong').textContent = `${Number(event.target.value).toFixed(2)}×`;
+  });
+  designRow.querySelector('.scene-caption-animation-amount').addEventListener('input', (event) => {
     event.target.closest('.zoom-field').querySelector('strong').textContent = `${Number(event.target.value).toFixed(2)}×`;
   });
   sceneTableBody.appendChild(tr);
@@ -164,15 +234,41 @@ function renderDeviceOptions(presets, selected, name) {
   `).join('');
 }
 
+function renderCaptionStyleOptions(presets, selected, name) {
+  return presets.map((preset) => `
+    <label class="caption-style-option ${preset.id}">
+      <input type="radio" class="scene-caption-style" name="${name}" value="${preset.id}" ${preset.id === selected ? 'checked' : ''} />
+      <span class="caption-style-preview"><b>${preset.sample}</b><em>Product</em></span>
+      <span>${preset.label}</span>
+    </label>
+  `).join('');
+}
+
+function addClip(clip = {}) {
+  const rowId = `clip_${Date.now()}_${Math.round(Math.random() * 100000)}`;
+  const tr = document.createElement('tr');
+  tr.className = 'clip-row';
+  tr.innerHTML = `
+    <td><input type="number" step="0.01" min="0" class="clip-start" value="${clip.start ?? ''}" /></td>
+    <td><input type="number" step="0.01" min="0" class="clip-end" value="${clip.end ?? ''}" /></td>
+    <td><select class="clip-mode">${renderOptions(CLIP_MODE_PRESETS, clip.mode || 'device-screen')}</select></td>
+    <td><input name="${rowId}" type="file" class="clip-file" accept="video/mp4,video/webm,video/quicktime,video/x-matroska" /></td>
+    <td><input class="clip-label" value="${escapeHtml(clip.label || '')}" placeholder="Optional" /></td>
+    <td><button type="button" class="delete">×</button></td>
+  `;
+  tr.querySelector('.delete').addEventListener('click', () => tr.remove());
+  clipTableBody.appendChild(tr);
+}
+
 function loadSampleScenes() {
   sceneTableBody.innerHTML = '';
   [
-    { start: 0, end: 4, caption: 'Story time,\njust got smarter', narration: 'Story time just got smarter.', background: 'reading-room', device: 'tablet-pro', angle: 'low-desk-left', motion: 'slow-push-in', motionAmount: 2.2, screenZoom: 1, transition: 'soft-fade', captionStyle: 'white-chip' },
-    { start: 4, end: 9, caption: 'the interactive story companion', narration: 'Meet the interactive story companion for young readers.', background: 'office-desk', device: 'laptop-silver', angle: 'front-center', motion: 'screen-focus', motionAmount: 2.2, screenZoom: 1, transition: 'soft-fade', captionStyle: 'glass-card' },
-    { start: 9, end: 15, caption: 'listen', narration: 'Listen to every line with clear narration.', background: 'cafe-table', device: 'phone-modern', angle: 'floating-hero', motion: 'device-tilt', motionAmount: 2.2, screenZoom: 1, transition: 'slide-up', captionStyle: 'white-chip' },
-    { start: 15, end: 22, caption: 'and tap any word to\nhear it out', narration: 'Tap any word to hear it out and build confidence.', background: 'home-office', device: 'tablet-pro', angle: 'low-desk-right', motion: 'pan-left', motionAmount: 2.2, screenZoom: 1, transition: 'soft-fade', captionStyle: 'bold-bottom' },
-    { start: 22, end: 26, caption: 'built from your real product', narration: 'Built from your real website or software recording.', background: 'meeting-room', device: 'browser-window', angle: 'front-center', motion: 'pan-right', motionAmount: 2.2, screenZoom: 1, transition: 'clean-cut', captionStyle: 'glass-card' },
-    { start: 26, end: 30, caption: 'Try it free today', narration: 'Try it free today.', background: 'creator-studio', device: 'tablet-pro', angle: 'floating-hero', motion: 'cta-push', motionAmount: 2.2, screenZoom: 1, transition: 'soft-fade', captionStyle: 'white-chip' },
+    { start: 0, end: 4, caption: 'Story time,\njust got smarter', narration: 'Story time just got smarter.', background: 'reading-room', device: 'tablet-pro', angle: 'low-desk-left', motion: 'slow-push-in', motionAmount: 2.2, screenZoom: 1, transition: 'soft-fade', captionStyle: 'editorial-card', captionPosition: 'top', captionAnimation: 'pop', captionSize: 'large', captionAccent: 'last-word', captionAnimationAmount: 1.65 },
+    { start: 4, end: 9, caption: 'the interactive story companion', narration: 'Meet the interactive story companion for young readers.', background: 'office-desk', device: 'laptop-silver', angle: 'front-center', motion: 'screen-focus', motionAmount: 2.2, screenZoom: 1, transition: 'soft-fade', captionStyle: 'glass-card', captionPosition: 'top', captionAnimation: 'rise', captionSize: 'standard', captionAccent: 'none', captionAnimationAmount: 1.4 },
+    { start: 9, end: 15, caption: 'listen', narration: 'Listen to every line with clear narration.', background: 'cafe-table', device: 'phone-modern', angle: 'floating-hero', motion: 'device-tilt', motionAmount: 2.2, screenZoom: 1, transition: 'slide-up', captionStyle: 'neon-ribbon', captionPosition: 'top', captionAnimation: 'slide-mask', captionSize: 'compact', captionAccent: 'first-word', captionAnimationAmount: 1.7 },
+    { start: 15, end: 22, caption: 'and tap any word to\nhear it out', narration: 'Tap any word to hear it out and build confidence.', background: 'home-office', device: 'tablet-pro', angle: 'low-desk-right', motion: 'pan-left', motionAmount: 2.2, screenZoom: 1, transition: 'soft-fade', captionStyle: 'bold-bottom', captionPosition: 'bottom', captionAnimation: 'rise', captionSize: 'hero', captionAccent: 'last-word', captionAnimationAmount: 1.55 },
+    { start: 22, end: 26, caption: 'built from your real product', narration: 'Built from your real website or software recording.', background: 'meeting-room', device: 'browser-window', angle: 'front-center', motion: 'pan-right', motionAmount: 2.2, screenZoom: 1, transition: 'clean-cut', captionStyle: 'minimal-subtitle', captionPosition: 'bottom', captionAnimation: 'type-on', captionSize: 'standard', captionAccent: 'none', captionAnimationAmount: 1.2 },
+    { start: 26, end: 30, caption: 'Try it free today', narration: 'Try it free today.', background: 'creator-studio', device: 'tablet-pro', angle: 'floating-hero', motion: 'cta-push', motionAmount: 2.2, screenZoom: 1, transition: 'soft-fade', captionStyle: 'device-callout', captionPosition: 'device', captionAnimation: 'pop', captionSize: 'large', captionAccent: 'first-word', captionAnimationAmount: 1.8 },
   ].forEach(addScene);
 }
 
@@ -191,9 +287,62 @@ function collectScenes() {
       motionAmount: Number(designRow.querySelector('.scene-motion-amount').value || DEFAULT_DESIGN.motionAmount),
       screenZoom: Number(designRow.querySelector('.scene-screen-zoom').value || DEFAULT_DESIGN.screenZoom),
       transition: designRow.querySelector('.scene-transition').value,
-      captionStyle: designRow.querySelector('.scene-caption-style').value,
+      captionStyle: checkedValue(designRow, '.scene-caption-style', DEFAULT_DESIGN.captionStyle),
+      captionPosition: designRow.querySelector('.scene-caption-position').value,
+      captionAnimation: designRow.querySelector('.scene-caption-animation').value,
+      captionSize: designRow.querySelector('.scene-caption-size').value,
+      captionAccent: designRow.querySelector('.scene-caption-accent').value,
+      captionAnimationAmount: Number(designRow.querySelector('.scene-caption-animation-amount').value || DEFAULT_DESIGN.captionAnimationAmount),
     };
   }).filter(s => s.end > s.start && (s.caption || s.narration));
+}
+
+function collectClips() {
+  return [...clipTableBody.querySelectorAll('tr.clip-row')].map(row => {
+    const fileInput = row.querySelector('.clip-file');
+    return {
+      start: Number(row.querySelector('.clip-start').value || 0),
+      end: Number(row.querySelector('.clip-end').value || 0),
+      mode: row.querySelector('.clip-mode').value,
+      label: row.querySelector('.clip-label').value.trim() || fileInput.files[0]?.name || 'Clip',
+      fileField: fileInput.name,
+    };
+  }).filter((clip, index) => {
+    const row = clipTableBody.querySelectorAll('tr.clip-row')[index];
+    return clip.end > clip.start && row.querySelector('.clip-file').files.length > 0;
+  });
+}
+
+async function generateScenesFromVoiceover(button) {
+  const audio = document.querySelector('#voiceoverInput').files[0];
+  if (!audio) {
+    showMessage('Choose a voiceover file first, then generate captions from it.', 'error');
+    return;
+  }
+
+  button.disabled = true;
+  button.textContent = 'Transcribing...';
+  showMessage('Transcribing voiceover. The first run can take a while if the local model needs to load.', '');
+  try {
+    const formData = new FormData();
+    formData.set('audio', audio);
+    formData.set('durationSeconds', projectForm.elements.durationSeconds.value || '30');
+    formData.set('productName', projectForm.elements.productName.value || '');
+    formData.set('cta', projectForm.elements.cta.value || '');
+
+    const res = await fetch('/api/transcribe', { method: 'POST', body: formData });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Could not transcribe voiceover');
+
+    sceneTableBody.innerHTML = '';
+    data.scenes.forEach(addScene);
+    showMessage(`Generated ${data.scenes.length} caption scenes from voiceover.`, 'success');
+  } catch (err) {
+    showMessage(String(err.message || err), 'error');
+  } finally {
+    button.disabled = false;
+    button.textContent = 'Generate from voiceover';
+  }
 }
 
 function checkedValue(root, selector, fallback) {
@@ -291,8 +440,10 @@ projectForm.addEventListener('submit', async (event) => {
     showMessage('Please add at least one scene with valid start/end times.', 'error');
     return;
   }
+  const clips = collectClips();
   const formData = new FormData(projectForm);
   formData.set('scenes', JSON.stringify(scenes));
+  formData.set('clips', JSON.stringify(clips));
   const submitBtn = projectForm.querySelector('button[type="submit"]');
   submitBtn.disabled = true;
   submitBtn.textContent = 'Saving...';
@@ -311,7 +462,9 @@ projectForm.addEventListener('submit', async (event) => {
 });
 
 document.querySelector('#addSceneBtn').addEventListener('click', () => addScene());
+document.querySelector('#addClipBtn').addEventListener('click', () => addClip());
 document.querySelector('#loadSampleBtn').addEventListener('click', loadSampleScenes);
+document.querySelector('#transcribeVoiceoverBtn').addEventListener('click', event => generateScenesFromVoiceover(event.target));
 document.querySelector('#refreshProjectsBtn').addEventListener('click', loadProjects);
 
 loadSampleScenes();

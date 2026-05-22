@@ -24,6 +24,7 @@ REMOTION_PUBLIC_PROJECTS = REMOTION_DIR / "public" / "projects"
 ALLOWED_VIDEO_EXTENSIONS = {"mp4", "mov", "webm", "mkv"}
 ALLOWED_AUDIO_EXTENSIONS = {"mp3", "wav", "m4a", "aac", "ogg"}
 ALLOWED_IMAGE_EXTENSIONS = {"png", "jpg", "jpeg", "webp"}
+CLIP_MODES = {"device-screen", "full-screen", "background", "overlay"}
 
 DEFAULT_SCENE_DESIGN: dict[str, Any] = {
     "background": "reading-room",
@@ -34,7 +35,23 @@ DEFAULT_SCENE_DESIGN: dict[str, Any] = {
     "screenZoom": 1,
     "transition": "soft-fade",
     "captionStyle": "white-chip",
+    "captionPosition": "auto",
+    "captionAnimation": "rise",
+    "captionSize": "standard",
+    "captionAccent": "none",
+    "captionAnimationAmount": 1.4,
 }
+
+CAPTION_STYLE_PRESETS = [
+    "white-chip",
+    "glass-card",
+    "bold-bottom",
+    "editorial-card",
+    "neon-ribbon",
+    "kinetic-stack",
+    "minimal-subtitle",
+    "device-callout",
+]
 
 BACKGROUND_PRESETS = [
     "reading-room",
@@ -91,6 +108,13 @@ def child_path(root: Path, *parts: str) -> Path:
 
 def normalize_project(project: dict[str, Any]) -> dict[str, Any]:
     normalized = dict(project)
+    normalized_assets = dict(normalized.get("assets", {})) if isinstance(normalized.get("assets"), dict) else {}
+    screen_info = screen_asset_info(normalized_assets)
+    if screen_info:
+        normalized_assets.setdefault("screenDurationSeconds", screen_info.get("duration"))
+        normalized_assets.setdefault("screenWidth", screen_info.get("width"))
+        normalized_assets.setdefault("screenHeight", screen_info.get("height"))
+        normalized["assets"] = normalized_assets
     scenes = normalized.get("scenes", [])
     if isinstance(scenes, list):
         normalized["scenes"] = [
@@ -99,6 +123,49 @@ def normalize_project(project: dict[str, Any]) -> dict[str, Any]:
         ]
     if normalized.get("template") in {None, "tablet", "laptop", "phone"}:
         normalized["template"] = "lifestyle"
+    clips = normalized.get("clips", [])
+    normalized["clips"] = normalize_clips(clips) if isinstance(clips, list) else []
+    return normalized
+
+
+def screen_asset_info(assets: dict[str, Any]) -> dict[str, Any] | None:
+    if assets.get("screenWidth") and assets.get("screenHeight"):
+        return {
+            "duration": assets.get("screenDurationSeconds"),
+            "width": assets.get("screenWidth"),
+            "height": assets.get("screenHeight"),
+        }
+    screen_asset = str(assets.get("screen") or "")
+    if not screen_asset:
+        return None
+    screen_path = REMOTION_PUBLIC_DIR / screen_asset
+    if not screen_path.exists():
+        return None
+    return probe_media_info(screen_path)
+
+
+def normalize_clips(clips: list[Any]) -> list[dict[str, Any]]:
+    normalized: list[dict[str, Any]] = []
+    for clip in clips:
+        if not isinstance(clip, dict):
+            continue
+        try:
+            start = max(0.0, float(clip.get("start", 0) or 0))
+            end = max(start, float(clip.get("end", 0) or 0))
+        except (TypeError, ValueError):
+            continue
+        asset = str(clip.get("asset") or "").strip()
+        mode = str(clip.get("mode") or "device-screen")
+        if not asset or end <= start:
+            continue
+        normalized.append({
+            "start": round(start, 3),
+            "end": round(end, 3),
+            "mode": mode if mode in CLIP_MODES else "device-screen",
+            "label": str(clip.get("label") or "Clip").strip()[:120],
+            "asset": asset,
+            "durationSeconds": clip.get("durationSeconds"),
+        })
     return normalized
 
 
@@ -115,7 +182,25 @@ def save_upload(file_storage, destination_dir: Path, prefix: str, allowed: set[s
     return filename
 
 
+def save_clip_upload(file_storage, destination_dir: Path, index: int) -> str:
+    if not file_storage or not file_storage.filename:
+        raise ValueError("Clip row is missing a video file.")
+    original = secure_filename(file_storage.filename)
+    if not original or not is_allowed(original, ALLOWED_VIDEO_EXTENSIONS):
+        raise ValueError(f"Unsupported clip file type: {original}")
+    ext = file_ext(original)
+    filename = f"clip_{index:02d}.{ext}"
+    destination_dir.mkdir(parents=True, exist_ok=True)
+    file_storage.save(destination_dir / filename)
+    return filename
+
+
 def probe_media_duration(path: Path) -> float | None:
+    info = probe_media_info(path)
+    return info.get("duration") if info else None
+
+
+def probe_media_info(path: Path) -> dict[str, Any] | None:
     ffprobe = "ffprobe.exe" if os.name == "nt" else "ffprobe"
     try:
         proc = subprocess.run(
@@ -123,10 +208,12 @@ def probe_media_duration(path: Path) -> float | None:
                 ffprobe,
                 "-v",
                 "error",
+                "-select_streams",
+                "v:0",
                 "-show_entries",
-                "format=duration",
+                "stream=width,height:format=duration",
                 "-of",
-                "default=noprint_wrappers=1:nokey=1",
+                "json",
                 str(path),
             ],
             capture_output=True,
@@ -135,7 +222,14 @@ def probe_media_duration(path: Path) -> float | None:
         )
         if proc.returncode != 0:
             return None
-        return round(float(proc.stdout.strip()), 3)
+        data = json.loads(proc.stdout or "{}")
+        stream = (data.get("streams") or [{}])[0]
+        duration = data.get("format", {}).get("duration")
+        return {
+            "duration": round(float(duration), 3) if duration not in {None, "N/A"} else None,
+            "width": int(stream.get("width") or 0) or None,
+            "height": int(stream.get("height") or 0) or None,
+        }
     except Exception:
         return None
 
@@ -150,9 +244,69 @@ def with_scene_design(scene: dict[str, Any], index: int) -> dict[str, Any]:
         "motionAmount": [2.2, 2.2, 2.2, 2.2][index % 4],
         "screenZoom": 1,
         "transition": ["soft-fade", "soft-fade", "slide-up", "clean-cut"][index % 4],
-        "captionStyle": ["white-chip", "glass-card", "white-chip", "bold-bottom"][index % 4],
+        "captionStyle": CAPTION_STYLE_PRESETS[index % len(CAPTION_STYLE_PRESETS)],
+        "captionPosition": ["top", "top", "top", "bottom", "bottom", "device"][index % 6],
+        "captionAnimation": ["pop", "rise", "slide-mask", "rise", "type-on", "pop"][index % 6],
+        "captionSize": ["large", "standard", "compact", "hero", "standard", "large"][index % 6],
+        "captionAccent": ["last-word", "none", "first-word", "last-word", "none", "first-word"][index % 6],
+        "captionAnimationAmount": 1.4,
     }
     return {**defaults, **scene}
+
+
+def caption_text(text: str, max_chars: int = 38) -> str:
+    words = text.strip().split()
+    if not words:
+        return ""
+    lines: list[str] = []
+    current: list[str] = []
+    for word in words:
+        candidate = " ".join([*current, word])
+        if current and len(candidate) > max_chars:
+            lines.append(" ".join(current))
+            current = [word]
+        else:
+            current.append(word)
+    if current:
+        lines.append(" ".join(current))
+    return "\n".join(lines[:2])
+
+
+def transcribe_audio_to_scenes(audio_path: Path, duration_seconds: float) -> list[dict[str, Any]]:
+    try:
+        from faster_whisper import WhisperModel
+    except ImportError as exc:
+        raise RuntimeError(
+            "Local transcription requires faster-whisper. Install it with: pip install faster-whisper"
+        ) from exc
+
+    model_name = os.environ.get("PROMO_STUDIO_WHISPER_MODEL", "base")
+    model = WhisperModel(model_name, device="cpu", compute_type="int8")
+    segments, _info = model.transcribe(str(audio_path), vad_filter=True)
+
+    scenes: list[dict[str, Any]] = []
+    for segment in segments:
+        text = " ".join(str(segment.text or "").split())
+        if not text:
+            continue
+        start = max(0.0, float(segment.start))
+        if duration_seconds > 0 and start >= duration_seconds:
+            continue
+        end = max(start + 0.35, float(segment.end))
+        if duration_seconds > 0:
+            end = min(end, duration_seconds)
+        if end <= start:
+            continue
+        scenes.append({
+            "start": round(start, 2),
+            "end": round(end, 2),
+            "caption": caption_text(text),
+            "narration": text,
+        })
+
+    if not scenes:
+        raise RuntimeError("No speech was detected in the uploaded audio.")
+    return [with_scene_design(scene, index) for index, scene in enumerate(scenes)]
 
 
 @app.route("/")
@@ -210,6 +364,10 @@ def create_project():
             scenes = json.loads(request.form.get("scenes", "[]"))
         except json.JSONDecodeError:
             return jsonify({"error": "Scenes JSON is invalid."}), 400
+        try:
+            clip_rows = json.loads(request.form.get("clips", "[]"))
+        except json.JSONDecodeError:
+            return jsonify({"error": "Clips JSON is invalid."}), 400
 
         if not scenes:
             scenes = [
@@ -219,8 +377,6 @@ def create_project():
                 {"start": 18, "end": 24, "caption": "turn walkthroughs into ads", "narration": "Turn everyday walkthroughs into polished advertisement videos."},
                 {"start": 24, "end": 30, "caption": cta, "narration": cta},
             ]
-        scenes = [with_scene_design(scene, index) for index, scene in enumerate(scenes)]
-
         screen_recording = request.files.get("screenRecording")
         if not screen_recording or not screen_recording.filename:
             return jsonify({"error": "Please upload a screen recording video."}), 400
@@ -232,9 +388,38 @@ def create_project():
         public_dir.mkdir(parents=True, exist_ok=True)
 
         screen_filename = save_upload(screen_recording, public_dir, "screen", ALLOWED_VIDEO_EXTENSIONS)
-        screen_duration = probe_media_duration(public_dir / screen_filename) if screen_filename else None
+        screen_info = probe_media_info(public_dir / screen_filename) if screen_filename else None
+        scenes = [with_scene_design(scene, index) for index, scene in enumerate(scenes)]
         voiceover_filename = save_upload(request.files.get("voiceover"), public_dir, "voiceover", ALLOWED_AUDIO_EXTENSIONS)
         logo_filename = save_upload(request.files.get("logo"), public_dir, "logo", ALLOWED_IMAGE_EXTENSIONS)
+        clips: list[dict[str, Any]] = []
+        if isinstance(clip_rows, list):
+            clips_dir = public_dir / "clips"
+            for index, clip in enumerate(clip_rows, start=1):
+                if not isinstance(clip, dict):
+                    continue
+                file_field = str(clip.get("fileField") or "")
+                clip_file = request.files.get(file_field)
+                if not clip_file or not clip_file.filename:
+                    continue
+                clip_filename = save_clip_upload(clip_file, clips_dir, index)
+                try:
+                    start = max(0.0, float(clip.get("start", 0) or 0))
+                    end = max(start, float(clip.get("end", 0) or 0))
+                except (TypeError, ValueError):
+                    continue
+                if end <= start:
+                    continue
+                mode = str(clip.get("mode") or "device-screen")
+                asset = f"projects/{project_id}/clips/{clip_filename}"
+                clips.append({
+                    "start": round(start, 3),
+                    "end": round(end, 3),
+                    "mode": mode if mode in CLIP_MODES else "device-screen",
+                    "label": str(clip.get("label") or clip_file.filename or "Clip").strip()[:120],
+                    "asset": asset,
+                    "durationSeconds": probe_media_duration(REMOTION_PUBLIC_DIR / asset),
+                })
 
         project: dict[str, Any] = {
             "id": project_id,
@@ -250,11 +435,14 @@ def create_project():
             "createdAt": datetime.now().isoformat(timespec="seconds"),
             "assets": {
                 "screen": f"projects/{project_id}/{screen_filename}",
-                "screenDurationSeconds": screen_duration,
+                "screenDurationSeconds": screen_info.get("duration") if screen_info else None,
+                "screenWidth": screen_info.get("width") if screen_info else None,
+                "screenHeight": screen_info.get("height") if screen_info else None,
                 "voiceover": f"projects/{project_id}/{voiceover_filename}" if voiceover_filename else None,
                 "logo": f"projects/{project_id}/{logo_filename}" if logo_filename else None,
             },
             "scenes": scenes,
+            "clips": normalize_clips(clips),
             "render": {
                 "lastStartedAt": None,
                 "lastFinishedAt": None,
@@ -276,6 +464,40 @@ def get_project(project_id: str):
         return jsonify({"project": read_project(project_id)})
     except FileNotFoundError:
         return jsonify({"error": "Project not found."}), 404
+
+
+@app.post("/api/transcribe")
+def transcribe_voiceover():
+    audio = request.files.get("audio")
+    if not audio or not audio.filename:
+        return jsonify({"error": "Upload a voiceover audio file first."}), 400
+    if not is_allowed(audio.filename, ALLOWED_AUDIO_EXTENSIONS):
+        return jsonify({"error": f"Unsupported audio file type: {secure_filename(audio.filename)}"}), 400
+
+    try:
+        duration_seconds = float(request.form.get("durationSeconds", "30") or 30)
+    except ValueError:
+        duration_seconds = 30
+    duration_seconds = max(5, min(duration_seconds, 120))
+
+    temp_dir = PROJECTS_DIR / "_transcription_uploads"
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    suffix = file_ext(audio.filename)
+    temp_path = temp_dir / f"{now_id()}_{secure_filename(audio.filename) or 'voiceover'}.{suffix}"
+    audio.save(temp_path)
+
+    try:
+        scenes = transcribe_audio_to_scenes(temp_path, duration_seconds)
+        return jsonify({"scenes": scenes})
+    except RuntimeError as exc:
+        return jsonify({"error": str(exc)}), 501
+    except Exception as exc:
+        return jsonify({"error": f"Could not transcribe audio: {exc}"}), 500
+    finally:
+        try:
+            temp_path.unlink(missing_ok=True)
+        except Exception:
+            pass
 
 
 @app.delete("/api/projects/<project_id>")
@@ -334,6 +556,7 @@ def render_project(project_id: str):
         "voiceoverAsset": project.get("assets", {}).get("voiceover"),
         "logoAsset": project.get("assets", {}).get("logo"),
         "scenes": project.get("scenes", []),
+        "clips": project.get("clips", []),
     }
     props_path.write_text(json.dumps(props, indent=2), encoding="utf-8")
 

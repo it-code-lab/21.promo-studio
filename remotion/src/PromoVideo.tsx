@@ -5,6 +5,7 @@ import {
   Img,
   Loop,
   OffthreadVideo,
+  Sequence,
   Video,
   interpolate,
   spring,
@@ -35,7 +36,21 @@ type Scene = {
   motionAmount?: number;
   screenZoom?: number;
   transition?: 'soft-fade' | 'clean-cut' | 'slide-up';
-  captionStyle?: 'white-chip' | 'glass-card' | 'bold-bottom';
+  captionStyle?: 'white-chip' | 'glass-card' | 'bold-bottom' | 'editorial-card' | 'neon-ribbon' | 'kinetic-stack' | 'minimal-subtitle' | 'device-callout';
+  captionPosition?: 'auto' | 'top' | 'center' | 'bottom' | 'device';
+  captionAnimation?: 'rise' | 'pop' | 'slide-mask' | 'type-on' | 'none';
+  captionSize?: 'compact' | 'standard' | 'large' | 'hero';
+  captionAccent?: 'none' | 'first-word' | 'last-word';
+  captionAnimationAmount?: number;
+};
+
+type TimelineClip = {
+  start: number;
+  end: number;
+  mode: 'device-screen' | 'full-screen' | 'background' | 'overlay';
+  label?: string;
+  asset: string;
+  durationSeconds?: number | null;
 };
 
 export type PromoProps = {
@@ -52,6 +67,7 @@ export type PromoProps = {
   voiceoverAsset?: string | null;
   logoAsset?: string | null;
   scenes: Scene[];
+  clips?: TimelineClip[];
 };
 
 export const defaultPromoProps: PromoProps = {
@@ -67,6 +83,7 @@ export const defaultPromoProps: PromoProps = {
   screenDurationSeconds: null,
   voiceoverAsset: null,
   logoAsset: null,
+  clips: [],
   scenes: [
     {start: 0, end: 5, caption: 'Promote your product faster'},
     {start: 5, end: 12, caption: 'Use your real screen recording'},
@@ -90,6 +107,11 @@ const sceneDefaults: Required<Omit<Scene, 'caption' | 'narration'>> = {
   screenZoom: 1,
   transition: 'soft-fade',
   captionStyle: 'white-chip',
+  captionPosition: 'auto',
+  captionAnimation: 'rise',
+  captionSize: 'standard',
+  captionAccent: 'none',
+  captionAnimationAmount: 1.4,
 };
 
 function designedScene(scenes: Scene[], seconds: number): Scene & typeof sceneDefaults {
@@ -119,6 +141,7 @@ export const PromoVideo: React.FC<PromoProps> = (props) => {
   const {fps, width, height} = useVideoConfig();
   const seconds = frame / fps;
   const scene = designedScene(props.scenes, seconds);
+  const clips = Array.isArray(props.clips) ? props.clips : [];
   const screenSrc = safeStatic(props.screenAsset);
   const voiceSrc = safeStatic(props.voiceoverAsset);
   const logoSrc = safeStatic(props.logoAsset);
@@ -229,6 +252,7 @@ const LifestylePromo: React.FC<PromoProps & {screenSrc: string | null; voiceSrc:
   const {fps} = useVideoConfig();
   const seconds = frame / fps;
   const scene = designedScene(props.scenes, seconds);
+  const clips = Array.isArray(props.clips) ? props.clips : [];
   const isLandscape = props.format === 'landscape';
   const isSquare = props.format === 'square';
   const ctaStartSeconds = Math.max(0, props.durationSeconds - 5.6);
@@ -264,6 +288,7 @@ const LifestylePromo: React.FC<PromoProps & {screenSrc: string | null; voiceSrc:
             filter: 'saturate(1.02) contrast(1.02)',
           }}
         />
+        <TimelineClips clips={clips} mode="background" fit="cover" />
         <AbsoluteFill
           style={{
             background: isLandscape
@@ -277,8 +302,12 @@ const LifestylePromo: React.FC<PromoProps & {screenSrc: string | null; voiceSrc:
           scene={scene}
           transitionOpacity={1}
           screenLoopFrames={props.screenDurationSeconds ? Math.max(2, Math.round(props.screenDurationSeconds * fps)) : undefined}
+          deviceClips={clips.filter((clip) => clip.mode === 'device-screen')}
         />
       </AbsoluteFill>
+
+      <TimelineClips clips={clips} mode="full-screen" fit="cover" />
+      <TimelineClips clips={clips} mode="overlay" fit="cover" overlay />
 
       <AbsoluteFill
         style={{
@@ -307,17 +336,14 @@ const LifestylePromo: React.FC<PromoProps & {screenSrc: string | null; voiceSrc:
       <div
         style={{
           position: 'absolute',
-          top: scene.captionStyle === 'bold-bottom' ? 'auto' : isLandscape ? 70 : isSquare ? 70 : 84,
-          bottom: scene.captionStyle === 'bold-bottom' ? (isLandscape ? 88 : isSquare ? 90 : 230) : 'auto',
-          left: isLandscape ? 160 : 74,
-          right: isLandscape ? 960 : 74,
+          ...captionPositionStyle(scene, isLandscape, isSquare),
           display: 'flex',
-          justifyContent: isLandscape ? 'flex-start' : 'center',
-          transform: `translateY(${interpolate(captionIn, [0, 1], [22, 0])}px) scale(${interpolate(captionIn, [0, 1], [0.97, 1])})`,
+          justifyContent: captionJustify(scene, isLandscape),
+          transform: captionTransform(scene, captionIn),
           opacity: interpolate(captionIn, [0, 1], [0, 1]),
         }}
       >
-        <CaptionChip caption={scene?.caption || props.title} isLandscape={isLandscape} captionStyle={scene.captionStyle} />
+        <CaptionChip caption={scene?.caption || props.title} isLandscape={isLandscape} scene={scene} />
       </div>
 
       {ctaVisible ? <LifestyleCta cta={props.cta} isLandscape={isLandscape} isSquare={isSquare} startFrame={Math.round(ctaStartSeconds * fps)} /> : null}
@@ -326,44 +352,129 @@ const LifestylePromo: React.FC<PromoProps & {screenSrc: string | null; voiceSrc:
   );
 };
 
-const CaptionChip: React.FC<{caption: string; isLandscape: boolean; captionStyle: Scene['captionStyle']}> = ({caption, isLandscape, captionStyle}) => {
+function captionPositionStyle(scene: Scene & typeof sceneDefaults, isLandscape: boolean, isSquare: boolean): React.CSSProperties {
+  const style = scene.captionStyle;
+  const position = style === 'bold-bottom' || style === 'minimal-subtitle'
+    ? 'bottom'
+    : style === 'device-callout'
+      ? 'device'
+      : scene.captionPosition || 'auto';
+
+  if (isLandscape) {
+    if (position === 'device') return {top: 100, left: 870, right: 110, bottom: 'auto'};
+    if (position === 'center') return {top: 300, left: 150, right: 930, bottom: 'auto'};
+    if (position === 'bottom') return {top: 'auto', bottom: 80, left: 150, right: 930};
+    return {top: 70, left: 160, right: 960, bottom: 'auto'};
+  }
+
+  if (position === 'center') return {top: isSquare ? 420 : 620, left: 74, right: 74, bottom: 'auto'};
+  if (position === 'bottom') return {top: 'auto', bottom: isSquare ? 90 : 210, left: 74, right: 74};
+  if (position === 'device') return {top: 'auto', bottom: isSquare ? 280 : 470, left: 88, right: 88};
+  return {top: isSquare ? 70 : 84, left: 74, right: 74, bottom: 'auto'};
+}
+
+function captionJustify(scene: Scene & typeof sceneDefaults, isLandscape: boolean): React.CSSProperties['justifyContent'] {
+  if (scene.captionStyle === 'device-callout') return 'flex-start';
+  return isLandscape ? 'flex-start' : 'center';
+}
+
+function captionTransform(scene: Scene & typeof sceneDefaults, captionIn: number): string {
+  const amount = Math.min(2.2, Math.max(0.5, Number.isFinite(scene.captionAnimationAmount) ? scene.captionAnimationAmount : sceneDefaults.captionAnimationAmount));
+  if (scene.captionAnimation === 'pop') {
+    return `scale(${interpolate(captionIn, [0, 1], [Math.max(0.76, 1 - (0.12 * amount)), 1])})`;
+  }
+  if (scene.captionAnimation === 'slide-mask') {
+    return `translateX(${interpolate(captionIn, [0, 1], [-18 * amount, 0])}px)`;
+  }
+  if (scene.captionAnimation === 'none') {
+    return 'none';
+  }
+  return `translateY(${interpolate(captionIn, [0, 1], [16 * amount, 0])}px) scale(${interpolate(captionIn, [0, 1], [0.97, 1])})`;
+}
+
+function captionFontSize(scene: Scene & typeof sceneDefaults, isLandscape: boolean): number {
+  const base = isLandscape ? 38 : 48;
+  if (scene.captionSize === 'compact') return base * 0.78;
+  if (scene.captionSize === 'large') return base * 1.18;
+  if (scene.captionSize === 'hero') return base * 1.42;
+  return base;
+}
+
+function accentedText(line: string, accent: Scene['captionAccent']): React.ReactNode {
+  const words = line.split(/(\s+)/);
+  const indexes = words.map((part, index) => (/\S/.test(part) ? index : -1)).filter((index) => index >= 0);
+  const accentIndex = accent === 'first-word' ? indexes[0] : accent === 'last-word' ? indexes[indexes.length - 1] : -1;
+  return words.map((part, index) => (
+    index === accentIndex
+      ? <span key={`${part}-${index}`} style={{color: '#38bdf8'}}>{part}</span>
+      : <React.Fragment key={`${part}-${index}`}>{part}</React.Fragment>
+  ));
+}
+
+const CaptionChip: React.FC<{caption: string; isLandscape: boolean; scene: Scene & typeof sceneDefaults}> = ({caption, isLandscape, scene}) => {
   const lines = String(caption || '').split(/\n+/).filter(Boolean);
-  const isGlass = captionStyle === 'glass-card';
-  const isBottom = captionStyle === 'bold-bottom';
+  const style = scene.captionStyle || 'white-chip';
+  const isGlass = style === 'glass-card';
+  const isBottom = style === 'bold-bottom';
+  const fontSize = captionFontSize(scene, isLandscape);
   return (
     <div
       style={{
         display: 'inline-flex',
         flexDirection: 'column',
-        alignItems: 'center',
-        gap: 5,
+        alignItems: style === 'device-callout' ? 'flex-start' : 'center',
+        gap: style === 'kinetic-stack' ? 10 : 5,
         maxWidth: isLandscape ? 560 : 900,
       }}
     >
       {(lines.length ? lines : [caption]).map((line, index) => (
         <div
           key={`${line}-${index}`}
-          style={{
-            color: isGlass || isBottom ? 'white' : '#171717',
-            borderRadius: 10,
-            padding: isLandscape ? '8px 18px 10px' : '10px 19px 12px',
-            fontSize: isBottom ? (isLandscape ? 48 : 58) : isLandscape ? 38 : 48,
-            lineHeight: 1.04,
-            fontWeight: 850,
-            letterSpacing: 0,
-            textAlign: 'center',
-            boxShadow: isBottom ? 'none' : '0 12px 34px rgba(64,43,20,.16)',
-            background: isBottom ? 'transparent' : isGlass ? 'rgba(15,23,42,.58)' : 'rgba(255,255,255,.94)',
-            textShadow: isBottom ? '0 8px 34px rgba(0,0,0,.52)' : 'none',
-            backdropFilter: isGlass ? 'blur(14px)' : undefined,
-          }}
+          style={captionLineStyle(style, index, fontSize, isLandscape)}
         >
-          {line}
+          {accentedText(line, scene.captionAccent)}
         </div>
       ))}
     </div>
   );
 };
+
+function captionLineStyle(style: NonNullable<Scene['captionStyle']>, index: number, fontSize: number, isLandscape: boolean): React.CSSProperties {
+  const base: React.CSSProperties = {
+    borderRadius: 10,
+    padding: isLandscape ? '8px 18px 10px' : '10px 19px 12px',
+    fontSize,
+    lineHeight: 1.04,
+    fontWeight: 850,
+    letterSpacing: 0,
+    textAlign: 'center',
+    boxShadow: '0 12px 34px rgba(64,43,20,.16)',
+    background: 'rgba(255,255,255,.94)',
+    color: '#171717',
+  };
+  if (style === 'glass-card') {
+    return {...base, background: 'rgba(15,23,42,.58)', color: 'white', boxShadow: '0 16px 44px rgba(0,0,0,.22)', backdropFilter: 'blur(14px)'};
+  }
+  if (style === 'bold-bottom') {
+    return {...base, background: 'transparent', color: 'white', fontWeight: 950, boxShadow: 'none', textShadow: '0 8px 34px rgba(0,0,0,.52)'};
+  }
+  if (style === 'editorial-card') {
+    return {...base, borderRadius: 8, background: 'rgba(255,250,240,.96)', fontFamily: 'Georgia, Times New Roman, serif', boxShadow: '0 18px 44px rgba(43,29,14,.18)'};
+  }
+  if (style === 'neon-ribbon') {
+    return {...base, borderRadius: 999, background: 'linear-gradient(135deg, rgba(8,13,20,.88), rgba(4,47,46,.84))', color: '#ecfeff', border: '1px solid rgba(94,234,212,.36)', boxShadow: '0 18px 46px rgba(13,148,136,.24)', textTransform: 'uppercase'};
+  }
+  if (style === 'kinetic-stack') {
+    return {...base, borderRadius: 8, background: index % 2 ? '#111827' : '#f8fafc', color: index % 2 ? '#f8fafc' : '#0f172a', transform: `rotate(${index % 2 ? 1.2 : -1.5}deg)`, boxShadow: '0 18px 42px rgba(0,0,0,.22)'};
+  }
+  if (style === 'minimal-subtitle') {
+    return {...base, borderRadius: 0, background: 'rgba(0,0,0,.56)', color: 'white', boxShadow: 'none', fontWeight: 740, padding: isLandscape ? '7px 16px 9px' : '8px 18px 10px'};
+  }
+  if (style === 'device-callout') {
+    return {...base, position: 'relative', borderRadius: 14, background: 'linear-gradient(135deg, rgba(255,255,255,.97), rgba(219,234,254,.94))', color: '#0f172a', boxShadow: '0 16px 40px rgba(15,23,42,.22)'};
+  }
+  return base;
+}
 
 const LifestyleDeviceStage: React.FC<{
   screenSrc: string | null;
@@ -371,7 +482,8 @@ const LifestyleDeviceStage: React.FC<{
   scene: Scene & typeof sceneDefaults;
   transitionOpacity: number;
   screenLoopFrames?: number;
-}> = ({screenSrc, format, scene, transitionOpacity, screenLoopFrames}) => {
+  deviceClips?: TimelineClip[];
+}> = ({screenSrc, format, scene, transitionOpacity, screenLoopFrames, deviceClips = []}) => {
   const frame = useCurrentFrame();
   const {fps} = useVideoConfig();
   const isLandscape = format === 'landscape';
@@ -423,6 +535,7 @@ const LifestyleDeviceStage: React.FC<{
             radius={deviceRadius(scene.device, isLandscape)}
             zoom={Number(scene.screenZoom || sceneDefaults.screenZoom)}
             loopFrames={screenLoopFrames}
+            clips={deviceClips}
           />
         </div>
         <div
@@ -592,27 +705,84 @@ function deviceRadius(device: NonNullable<Scene['device']>, isLandscape: boolean
   return isLandscape ? 30 : 36;
 }
 
-const ScreenVideo: React.FC<{screenSrc: string | null; radius: number; zoom?: number; loopFrames?: number}> = ({screenSrc, radius, zoom = 1, loopFrames}) => {
+const TimelineClips: React.FC<{
+  clips: TimelineClip[];
+  mode: TimelineClip['mode'];
+  fit: React.CSSProperties['objectFit'];
+  radius?: number;
+  zoom?: number;
+  overlay?: boolean;
+}> = ({clips, mode, fit, radius = 0, zoom = 1, overlay = false}) => {
+  const {fps} = useVideoConfig();
+  return (
+    <>
+      {clips.filter((clip) => clip.mode === mode && clip.asset).map((clip, index) => {
+        const from = Math.max(0, Math.round(Number(clip.start || 0) * fps));
+        const duration = Math.max(1, Math.round((Number(clip.end || 0) - Number(clip.start || 0)) * fps));
+        const style: React.CSSProperties = overlay
+          ? {
+              position: 'absolute',
+              right: '5%',
+              bottom: '7%',
+              width: '34%',
+              aspectRatio: '16 / 9',
+              objectFit: fit,
+              borderRadius: 8,
+              zIndex: 7,
+              boxShadow: '0 24px 70px rgba(0,0,0,.42)',
+              border: '1px solid rgba(255,255,255,.28)',
+            }
+          : {
+              position: 'absolute',
+              inset: 0,
+              width: '100%',
+              height: '100%',
+              objectFit: fit,
+              borderRadius: radius,
+              transform: mode === 'device-screen' ? `translate3d(0, 0, 0) scale(${zoom})` : undefined,
+              transformOrigin: 'center center',
+            };
+        return (
+          <Sequence key={`${clip.asset}-${index}`} from={from} durationInFrames={duration}>
+            <Video src={staticFile(clip.asset)} muted style={style} />
+          </Sequence>
+        );
+      })}
+    </>
+  );
+};
+
+const ScreenVideo: React.FC<{screenSrc: string | null; radius: number; zoom?: number; loopFrames?: number; clips?: TimelineClip[]}> = ({screenSrc, radius, zoom = 1, loopFrames, clips = []}) => {
+  const baseStyle: React.CSSProperties = {
+    position: 'absolute',
+    inset: 0,
+    width: '100%',
+    height: '100%',
+    objectFit: 'contain',
+    borderRadius: radius,
+    transform: `translate3d(0, 0, 0) scale(${zoom})`,
+    transformOrigin: 'center center',
+    backfaceVisibility: 'hidden',
+    willChange: 'transform',
+  };
+
   if (!screenSrc) {
-    return <div style={{width: '100%', height: '100%', background: 'linear-gradient(135deg,#1e293b,#0f172a)', borderRadius: radius}} />;
+    return <div style={{position: 'relative', width: '100%', height: '100%', background: 'linear-gradient(135deg,#1e293b,#0f172a)', borderRadius: radius}} />;
   }
+
   const video = (
     <Video
       src={screenSrc}
       muted
-      style={{
-        width: '100%',
-        height: '100%',
-        objectFit: 'cover',
-        borderRadius: radius,
-        transform: `translate3d(0, 0, 0) scale(${zoom})`,
-        transformOrigin: 'center center',
-        backfaceVisibility: 'hidden',
-        willChange: 'transform',
-      }}
+      style={baseStyle}
     />
   );
-  return loopFrames && loopFrames > 1 ? <Loop durationInFrames={loopFrames}>{video}</Loop> : video;
+  return (
+    <div style={{position: 'relative', width: '100%', height: '100%', overflow: 'hidden', borderRadius: radius, background: '#f8fafc'}}>
+      {loopFrames && loopFrames > 1 ? <Loop durationInFrames={loopFrames}>{video}</Loop> : video}
+      <TimelineClips clips={clips} mode="device-screen" fit="contain" radius={radius} zoom={zoom} />
+    </div>
+  );
 };
 
 const TabletMock: React.FC<{screenSrc: string | null}> = ({screenSrc}) => (

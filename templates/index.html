@@ -83,7 +83,7 @@
             </label>
             <label class="upload-box muted">
               <span>Optional voiceover</span>
-              <input name="voiceover" type="file" accept="audio/*" />
+              <input id="voiceoverInput" name="voiceover" type="file" accept="audio/*" />
             </label>
             <label class="upload-box muted">
               <span>Optional logo</span>
@@ -99,6 +99,7 @@
           <div class="scene-actions">
             <button type="button" id="addSceneBtn" class="secondary">+ Add scene</button>
             <button type="button" id="loadSampleBtn" class="secondary">Load sample scenes</button>
+            <button type="button" id="transcribeVoiceoverBtn" class="secondary">Generate from voiceover</button>
           </div>
 
           <div class="table-wrap">
@@ -109,6 +110,31 @@
                   <th>End</th>
                   <th>Caption</th>
                   <th>Narration / notes</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+
+          <div class="panel-title small">
+            <h2>Timeline clips</h2>
+            <span>Optional</span>
+          </div>
+
+          <div class="scene-actions">
+            <button type="button" id="addClipBtn" class="secondary">+ Add clip</button>
+          </div>
+
+          <div class="table-wrap">
+            <table id="clipTable">
+              <thead>
+                <tr>
+                  <th>Start</th>
+                  <th>End</th>
+                  <th>Mode</th>
+                  <th>Clip video</th>
+                  <th>Label</th>
                   <th></th>
                 </tr>
               </thead>
