@@ -25,6 +25,7 @@ ALLOWED_VIDEO_EXTENSIONS = {"mp4", "mov", "webm", "mkv"}
 ALLOWED_AUDIO_EXTENSIONS = {"mp3", "wav", "m4a", "aac", "ogg"}
 ALLOWED_IMAGE_EXTENSIONS = {"png", "jpg", "jpeg", "webp"}
 CLIP_MODES = {"device-screen", "full-screen", "background", "overlay"}
+MAX_PROJECT_DURATION_SECONDS = 600
 
 DEFAULT_SCENE_DESIGN: dict[str, Any] = {
     "background": "reading-room",
@@ -115,6 +116,14 @@ def normalize_project(project: dict[str, Any]) -> dict[str, Any]:
         normalized_assets.setdefault("screenWidth", screen_info.get("width"))
         normalized_assets.setdefault("screenHeight", screen_info.get("height"))
         normalized["assets"] = normalized_assets
+    voiceover_duration = voiceover_asset_duration(normalized_assets)
+    if voiceover_duration:
+        normalized_assets["voiceoverDurationSeconds"] = voiceover_duration
+        normalized["assets"] = normalized_assets
+        normalized["durationSeconds"] = bounded_duration(max(
+            float(normalized.get("durationSeconds") or 0),
+            float(voiceover_duration),
+        ))
     scenes = normalized.get("scenes", [])
     if isinstance(scenes, list):
         normalized["scenes"] = [
@@ -126,6 +135,21 @@ def normalize_project(project: dict[str, Any]) -> dict[str, Any]:
     clips = normalized.get("clips", [])
     normalized["clips"] = normalize_clips(clips) if isinstance(clips, list) else []
     return normalized
+
+
+def voiceover_asset_duration(assets: dict[str, Any]) -> float | None:
+    if assets.get("voiceoverDurationSeconds"):
+        try:
+            return float(assets.get("voiceoverDurationSeconds") or 0)
+        except (TypeError, ValueError):
+            return None
+    voiceover_asset = str(assets.get("voiceover") or "")
+    if not voiceover_asset:
+        return None
+    voiceover_path = REMOTION_PUBLIC_DIR / voiceover_asset
+    if not voiceover_path.exists():
+        return None
+    return probe_media_duration(voiceover_path)
 
 
 def screen_asset_info(assets: dict[str, Any]) -> dict[str, Any] | None:
@@ -169,7 +193,7 @@ def normalize_clips(clips: list[Any]) -> list[dict[str, Any]]:
     return normalized
 
 
-def bounded_duration(seconds: float, minimum: int = 5, maximum: int = 120) -> int:
+def bounded_duration(seconds: float, minimum: int = 5, maximum: int = MAX_PROJECT_DURATION_SECONDS) -> int:
     return int(min(maximum, max(minimum, float(seconds))) + 0.999)
 
 
@@ -566,7 +590,7 @@ def transcribe_voiceover():
 
     try:
         duration_seconds = probe_media_duration(temp_path) or requested_duration_seconds
-        duration_seconds = min(120, max(5, float(duration_seconds)))
+        duration_seconds = min(MAX_PROJECT_DURATION_SECONDS, max(5, float(duration_seconds)))
         scenes = transcribe_audio_to_scenes(temp_path, duration_seconds)
         return jsonify({"scenes": scenes, "durationSeconds": round(duration_seconds, 2)})
     except RuntimeError as exc:

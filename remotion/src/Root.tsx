@@ -4,9 +4,10 @@ import {PromoProps, PromoVideo, defaultPromoProps} from './PromoVideo';
 
 const fps = 30;
 const defaultDurationInFrames = 30 * fps;
+const maxDurationInFrames = 600 * fps;
 const resolveDuration = (props: PromoProps) => {
   const seconds = Number(props.durationSeconds || 30);
-  return Math.max(5 * fps, Math.min(120 * fps, Math.round(seconds * fps)));
+  return Math.max(5 * fps, Math.min(maxDurationInFrames, Math.round(seconds * fps)));
 };
 
 export const Root: React.FC = () => {
