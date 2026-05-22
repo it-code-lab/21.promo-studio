@@ -28,6 +28,9 @@ ALLOWED_AUDIO_EXTENSIONS = {"mp3", "wav", "m4a", "aac", "ogg"}
 ALLOWED_IMAGE_EXTENSIONS = {"png", "jpg", "jpeg", "webp"}
 CLIP_MODES = {"device-screen", "full-screen", "background", "overlay"}
 MAX_PROJECT_DURATION_SECONDS = 600
+DEFAULT_MIN_SCENE_SECONDS = 2.5
+DEFAULT_TARGET_SCENE_SECONDS = 4.5
+DEFAULT_MAX_SCENE_SECONDS = 7.0
 RENDER_PROGRESS_RE = re.compile(r"(Rendered|Encoded)\s+(\d+)\s*/\s*(\d+)", re.IGNORECASE)
 RENDER_PHASE_RE = re.compile(r"^(Bundling|Copying public dir|Getting composition)", re.IGNORECASE)
 RENDER_THREADS: dict[str, threading.Thread] = {}
@@ -551,7 +554,93 @@ def transcript_word_dict(word: Any, scene_start: float, scene_end: float) -> dic
     }
 
 
-def transcribe_audio_to_scenes(audio_path: Path, duration_seconds: float) -> list[dict[str, Any]]:
+def parse_scene_pacing(form: Any) -> tuple[float, float, float]:
+    def parse_number(name: str, default: float) -> float:
+        try:
+            return float(form.get(name, default) or default)
+        except (TypeError, ValueError):
+            return default
+
+    min_seconds = min(8.0, max(1.0, parse_number("minSceneSeconds", DEFAULT_MIN_SCENE_SECONDS)))
+    target_seconds = min(12.0, max(min_seconds, parse_number("targetSceneSeconds", DEFAULT_TARGET_SCENE_SECONDS)))
+    max_seconds = min(16.0, max(target_seconds, parse_number("maxSceneSeconds", DEFAULT_MAX_SCENE_SECONDS)))
+    return min_seconds, target_seconds, max_seconds
+
+
+def merge_transcript_scene_group(group: list[dict[str, Any]]) -> dict[str, Any]:
+    first = group[0]
+    last = group[-1]
+    narration = " ".join(
+        " ".join(str(scene.get("narration") or scene.get("caption") or "").split())
+        for scene in group
+    ).strip()
+    words = sorted(
+        [word for scene in group for word in (scene.get("words") or []) if isinstance(word, dict)],
+        key=lambda word: float(word.get("start", 0) or 0),
+    )
+    return {
+        **first,
+        "start": round(float(first.get("start", 0) or 0), 2),
+        "end": round(float(last.get("end", first.get("end", 0)) or 0), 2),
+        "caption": caption_text(narration),
+        "narration": narration,
+        "words": words,
+        "wordTimingSource": "voiceover" if words else "estimated",
+    }
+
+
+def pace_transcript_scenes(
+    scenes: list[dict[str, Any]],
+    min_scene_seconds: float,
+    target_scene_seconds: float,
+    max_scene_seconds: float,
+) -> list[dict[str, Any]]:
+    if not scenes:
+        return scenes
+
+    groups: list[list[dict[str, Any]]] = []
+    buffer: list[dict[str, Any]] = []
+    sorted_scenes = sorted(scenes, key=lambda scene: float(scene.get("start", 0) or 0))
+
+    for scene in sorted_scenes:
+        if buffer:
+            current_start = float(buffer[0].get("start", 0) or 0)
+            current_end = float(buffer[-1].get("end", current_start) or current_start)
+            scene_end = float(scene.get("end", current_end) or current_end)
+            current_duration = max(0.0, current_end - current_start)
+            projected_duration = max(0.0, scene_end - current_start)
+            if current_duration >= min_scene_seconds and projected_duration > max_scene_seconds:
+                groups.append(buffer)
+                buffer = []
+
+        buffer.append(scene)
+        start = float(buffer[0].get("start", 0) or 0)
+        end = float(buffer[-1].get("end", start) or start)
+        duration = max(0.0, end - start)
+        text = str(scene.get("narration") or scene.get("caption") or "").strip()
+        ends_sentence = bool(re.search(r"[.!?]$", text))
+        if duration >= max_scene_seconds or (duration >= target_scene_seconds and ends_sentence):
+            groups.append(buffer)
+            buffer = []
+
+    if buffer:
+        start = float(buffer[0].get("start", 0) or 0)
+        end = float(buffer[-1].get("end", start) or start)
+        if groups and max(0.0, end - start) < min_scene_seconds:
+            groups[-1].extend(buffer)
+        else:
+            groups.append(buffer)
+
+    return [merge_transcript_scene_group(group) for group in groups if group]
+
+
+def transcribe_audio_to_scenes(
+    audio_path: Path,
+    duration_seconds: float,
+    min_scene_seconds: float = DEFAULT_MIN_SCENE_SECONDS,
+    target_scene_seconds: float = DEFAULT_TARGET_SCENE_SECONDS,
+    max_scene_seconds: float = DEFAULT_MAX_SCENE_SECONDS,
+) -> list[dict[str, Any]]:
     try:
         from faster_whisper import WhisperModel
     except ImportError as exc:
@@ -592,6 +681,7 @@ def transcribe_audio_to_scenes(audio_path: Path, duration_seconds: float) -> lis
 
     if not scenes:
         raise RuntimeError("No speech was detected in the uploaded audio.")
+    scenes = pace_transcript_scenes(scenes, min_scene_seconds, target_scene_seconds, max_scene_seconds)
     return [with_scene_design(scene, index) for index, scene in enumerate(scenes)]
 
 
@@ -813,7 +903,14 @@ def transcribe_voiceover():
     try:
         duration_seconds = probe_media_duration(temp_path) or requested_duration_seconds
         duration_seconds = min(MAX_PROJECT_DURATION_SECONDS, max(5, float(duration_seconds)))
-        scenes = transcribe_audio_to_scenes(temp_path, duration_seconds)
+        min_scene_seconds, target_scene_seconds, max_scene_seconds = parse_scene_pacing(request.form)
+        scenes = transcribe_audio_to_scenes(
+            temp_path,
+            duration_seconds,
+            min_scene_seconds,
+            target_scene_seconds,
+            max_scene_seconds,
+        )
         return jsonify({"scenes": scenes, "durationSeconds": round(duration_seconds, 2)})
     except RuntimeError as exc:
         return jsonify({"error": str(exc)}), 501

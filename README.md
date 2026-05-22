@@ -132,11 +132,19 @@ After choosing a voiceover file, click **Generate from voiceover**.
 The app uses `faster-whisper` locally to:
 
 - transcribe the voiceover
-- split transcript text into scenes
+- split transcript text into paced scenes
 - store word-level timings
 - generate caption timing for preview and render
 
 The first transcription may take longer while the local model loads.
+
+Use **Scene pacing** before generating captions to control how fast scene visuals change:
+
+- **Minimum** prevents tiny transcript fragments from becoming standalone scenes.
+- **Preferred** is the target scene length for most caption groups.
+- **Maximum** prevents any merged transcript scene from running too long.
+
+After captions are generated, **Rebuild scene lengths** can merge existing short scenes using the same pacing controls while preserving word-level voiceover timings.
 
 ### 4. Edit Scenes
 
@@ -148,6 +156,8 @@ Scenes define the main timeline. Each scene has:
 - narration/notes
 
 You can add scenes manually, insert a scene after another scene, delete scenes, and drag scenes to reorder them.
+
+Use **Reflow timings by order** when you only want to make existing scene timings continuous. Use **Rebuild scene lengths** when transcript scenes are too short and should be merged into calmer visual chunks.
 
 Scene visual overrides are collapsed by default to keep the UI clean. Expand **Scene visual overrides** when you want a scene-specific background, device, angle, motion, transition, or caption override.
 

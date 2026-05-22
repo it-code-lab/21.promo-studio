@@ -17,6 +17,9 @@ const globalCaptionStyles = document.querySelector('#globalCaptionStyles');
 const globalCaptionPosition = document.querySelector('#globalCaptionPosition');
 const globalCaptionSize = document.querySelector('#globalCaptionSize');
 const globalCaptionAccent = document.querySelector('#globalCaptionAccent');
+const minSceneSecondsInput = document.querySelector('#minSceneSeconds');
+const targetSceneSecondsInput = document.querySelector('#targetSceneSeconds');
+const maxSceneSecondsInput = document.querySelector('#maxSceneSeconds');
 
 const BACKGROUND_PRESETS = [
   { id: 'reading-room', label: 'Reading room', thumb: '/preview-assets/assets/lifestyle-reading-room.png' },
@@ -638,6 +641,110 @@ function reflowSceneTimings() {
   refreshClipPlacementOptions();
 }
 
+function scenePacingConfig() {
+  const minSeconds = clampNumber(Number(minSceneSecondsInput?.value || 2.5), 1, 8);
+  const targetSeconds = clampNumber(Number(targetSceneSecondsInput?.value || 4.5), minSeconds, 12);
+  const maxSeconds = clampNumber(Number(maxSceneSecondsInput?.value || 7), Math.max(targetSeconds, minSeconds + 0.25), 16);
+  if (minSceneSecondsInput) minSceneSecondsInput.value = minSeconds;
+  if (targetSceneSecondsInput) targetSceneSecondsInput.value = targetSeconds;
+  if (maxSceneSecondsInput) maxSceneSecondsInput.value = maxSeconds;
+  return { minSeconds, targetSeconds, maxSeconds };
+}
+
+function clampNumber(value, min, max) {
+  if (!Number.isFinite(value)) return min;
+  return Math.min(max, Math.max(min, value));
+}
+
+function rebuildScenesByPacing() {
+  const scenes = collectScenes().sort((a, b) => a.start - b.start);
+  if (!scenes.length) {
+    showMessage('Add or generate scenes before rebuilding scene lengths.', 'error');
+    return;
+  }
+
+  const { minSeconds, targetSeconds, maxSeconds } = scenePacingConfig();
+  const groups = [];
+  let buffer = [];
+
+  scenes.forEach((scene) => {
+    if (buffer.length) {
+      const currentStart = buffer[0].start;
+      const projectedDuration = Math.max(0, scene.end - currentStart);
+      const currentDuration = Math.max(0, buffer.at(-1).end - currentStart);
+      if (currentDuration >= minSeconds && projectedDuration > maxSeconds) {
+        groups.push(buffer);
+        buffer = [];
+      }
+    }
+
+    buffer.push(scene);
+    const duration = Math.max(0, buffer.at(-1).end - buffer[0].start);
+    const lastText = (scene.narration || scene.caption || '').trim();
+    const endsSentence = /[.!?]$/.test(lastText);
+    if (duration >= maxSeconds || (duration >= targetSeconds && endsSentence)) {
+      groups.push(buffer);
+      buffer = [];
+    }
+  });
+
+  if (buffer.length) {
+    const duration = Math.max(0, buffer.at(-1).end - buffer[0].start);
+    if (groups.length && duration < minSeconds) {
+      groups[groups.length - 1] = groups[groups.length - 1].concat(buffer);
+    } else {
+      groups.push(buffer);
+    }
+  }
+
+  const rebuilt = groups.map((group) => mergeSceneGroup(group));
+  sceneTableBody.innerHTML = '';
+  selectedSceneId = '';
+  rebuilt.forEach(addScene);
+  refreshClipPlacementOptions();
+  if (projectForm.elements.durationSeconds) {
+    projectForm.elements.durationSeconds.value = Math.ceil(Math.max(Number(projectForm.elements.durationSeconds.value || 0), lastSceneEnd()));
+  }
+  showMessage(`Rebuilt ${scenes.length} scenes into ${rebuilt.length} paced scenes. Word timings were preserved.`, 'success');
+}
+
+function mergeSceneGroup(group) {
+  const first = group[0];
+  const text = normalizeWhitespace(group.map((scene) => scene.narration || scene.caption || '').filter(Boolean).join(' '));
+  const words = group.flatMap((scene) => Array.isArray(scene.words) ? scene.words : []).sort((a, b) => Number(a.start || 0) - Number(b.start || 0));
+  return {
+    ...first,
+    start: Number(first.start.toFixed(2)),
+    end: Number(group.at(-1).end.toFixed(2)),
+    caption: captionFromText(text || normalizeWhitespace(group.map((scene) => scene.caption || '').join(' '))),
+    narration: text,
+    words,
+    wordTimingSource: hasVoiceoverWordTiming(words) ? 'voiceover' : first.wordTimingSource || 'estimated',
+  };
+}
+
+function captionFromText(text, maxChars = 42) {
+  const words = normalizeWhitespace(text).split(' ').filter(Boolean);
+  if (!words.length) return '';
+  const lines = [];
+  let current = [];
+  words.forEach((word) => {
+    const candidate = [...current, word].join(' ');
+    if (current.length && candidate.length > maxChars) {
+      lines.push(current.join(' '));
+      current = [word];
+    } else {
+      current.push(word);
+    }
+  });
+  if (current.length) lines.push(current.join(' '));
+  return lines.slice(0, 2).join('\n');
+}
+
+function normalizeWhitespace(value) {
+  return String(value || '').replace(/\s+/g, ' ').trim();
+}
+
 function shiftStoredWords(row, delta) {
   if (!delta) return;
   const words = parseWords(row.dataset.words);
@@ -663,6 +770,10 @@ async function generateScenesFromVoiceover(button) {
     const formData = new FormData();
     formData.set('audio', audio);
     formData.set('durationSeconds', projectForm.elements.durationSeconds.value || '30');
+    const pacing = scenePacingConfig();
+    formData.set('minSceneSeconds', pacing.minSeconds);
+    formData.set('targetSceneSeconds', pacing.targetSeconds);
+    formData.set('maxSceneSeconds', pacing.maxSeconds);
     formData.set('productName', projectForm.elements.productName.value || '');
     formData.set('cta', projectForm.elements.cta.value || '');
 
@@ -866,6 +977,7 @@ document.querySelector('#addSceneAfterBtn').addEventListener('click', () => {
 document.querySelector('#addClipBtn').addEventListener('click', () => addClip());
 document.querySelector('#loadSampleBtn').addEventListener('click', loadSampleScenes);
 document.querySelector('#reflowScenesBtn').addEventListener('click', reflowSceneTimings);
+document.querySelector('#paceScenesBtn').addEventListener('click', rebuildScenesByPacing);
 document.querySelector('#transcribeVoiceoverBtn').addEventListener('click', event => generateScenesFromVoiceover(event.target));
 document.querySelector('#refreshProjectsBtn').addEventListener('click', loadProjects);
 
