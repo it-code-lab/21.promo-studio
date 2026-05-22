@@ -272,6 +272,20 @@ def caption_text(text: str, max_chars: int = 38) -> str:
     return "\n".join(lines[:2])
 
 
+def transcript_word_dict(word: Any, scene_start: float, scene_end: float) -> dict[str, Any] | None:
+    word_text = " ".join(str(getattr(word, "word", "") or "").split())
+    if not word_text:
+        return None
+    word_start = max(scene_start, float(getattr(word, "start", scene_start) or scene_start))
+    word_end = min(scene_end, float(getattr(word, "end", word_start + 0.2) or word_start + 0.2))
+    return {
+        "text": word_text,
+        "start": round(word_start, 3),
+        "end": round(max(word_start + 0.04, word_end), 3),
+        "source": "voiceover",
+    }
+
+
 def transcribe_audio_to_scenes(audio_path: Path, duration_seconds: float) -> list[dict[str, Any]]:
     try:
         from faster_whisper import WhisperModel
@@ -297,24 +311,18 @@ def transcribe_audio_to_scenes(audio_path: Path, duration_seconds: float) -> lis
             end = min(end, duration_seconds)
         if end <= start:
             continue
-        words = []
+        words: list[dict[str, Any]] = []
         for word in getattr(segment, "words", None) or []:
-            word_text = " ".join(str(getattr(word, "word", "") or "").split())
-            if not word_text:
-                continue
-            word_start = max(start, float(getattr(word, "start", start) or start))
-            word_end = min(end, float(getattr(word, "end", word_start + 0.2) or word_start + 0.2))
-            words.append({
-                "text": word_text,
-                "start": round(word_start, 3),
-                "end": round(max(word_start + 0.04, word_end), 3),
-            })
+            word_data = transcript_word_dict(word, start, end)
+            if word_data:
+                words.append(word_data)
         scenes.append({
             "start": round(start, 2),
             "end": round(end, 2),
             "caption": caption_text(text),
             "narration": text,
             "words": words,
+            "wordTimingSource": "voiceover" if words else "estimated",
         })
 
     if not scenes:

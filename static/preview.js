@@ -16,6 +16,7 @@ const captionWordsValue = document.querySelector('#previewWordsValue');
 const captionHighlightSelect = document.querySelector('#previewHighlightMode');
 const captionSizeSelect = document.querySelector('#previewCaptionSize');
 const resetCaptionPreviewBtn = document.querySelector('#resetCaptionPreviewBtn');
+const captionTimingBadge = document.querySelector('#captionTimingBadge');
 
 const assetUrl = (path) => path ? `/preview-assets/${path}` : '';
 const BACKGROUNDS = {
@@ -60,7 +61,10 @@ const CAPTION_STYLE_PRESETS = [
 const scenes = Array.isArray(project.scenes) ? project.scenes : [];
 const duration = Math.max(5, Number(project.durationSeconds || 30));
 const ctaStart = Math.max(0, duration - 5.6);
-const captionTimeline = scenes.map((scene) => ({ scene, words: sceneWords(scene) }));
+const captionTimeline = scenes.map((scene) => {
+  const words = sceneWords(scene);
+  return { scene, words, timingSource: words.some((word) => word.source === 'voiceover') ? 'voiceover' : 'estimated' };
+});
 const previewSettingsKey = `promo-preview-captions:${project.id || 'default'}`;
 let activeSceneKey = '';
 let animationFrame = null;
@@ -84,8 +88,10 @@ if (project.assets?.logo) {
 ctaPill.textContent = project.cta || 'Try it free today';
 
 function activeSceneEntry(seconds) {
-  const entry = captionTimeline.find((item) => seconds >= Number(item.scene.start || 0) && seconds < Number(item.scene.end || 0)) || captionTimeline[captionTimeline.length - 1] || { scene: {}, words: [] };
-  return { scene: { ...DEFAULT_SCENE, ...entry.scene }, words: entry.words };
+  const entry = captionTimeline.find((item) => seconds >= Number(item.scene.start || 0) && seconds < Number(item.scene.end || 0))
+    || (seconds < Number(captionTimeline[0]?.scene?.start || 0) ? captionTimeline[0] : captionTimeline[captionTimeline.length - 1])
+    || { scene: {}, words: [], timingSource: 'estimated' };
+  return { scene: { ...DEFAULT_SCENE, ...entry.scene }, words: entry.words, timingSource: entry.timingSource };
 }
 
 function activeScene(seconds) {
@@ -102,6 +108,7 @@ function sceneWords(scene) {
         text: cleanWord(word.text || word.word || ''),
         start: Number(word.start ?? start),
         end: Number(word.end ?? word.start ?? end),
+        source: word.source || 'voiceover',
       }))
       .filter((word) => word.text)
       .map((word, index, words) => ({
@@ -118,6 +125,7 @@ function sceneWords(scene) {
     text: cleanWord(word),
     start: start + index * span,
     end: start + (index + 1) * span,
+    source: 'estimated',
   })).filter((word) => word.text);
 }
 
@@ -201,6 +209,7 @@ function updatePreview() {
   applySceneDesign(scene);
   setCaption(scene?.caption || project.title, scene, seconds, entry.words);
   setTraySelected(effectiveCaptionStyle(scene));
+  setTimingBadge(entry.timingSource);
   ctaPill.classList.toggle('hidden', seconds < ctaStart);
 
   if (seconds >= duration) {
@@ -259,6 +268,14 @@ function applySceneDesign(scene) {
   const localProgress = Math.min(1, Math.max(0, (screenVideo.currentTime - Number(scene.start || 0)) / localDuration));
   const zoomBase = Number(scene.screenZoom || DEFAULT_SCENE.screenZoom);
   screenVideo.style.transform = `translate3d(0, 0, 0) scale(${zoomBase})`;
+}
+
+function setTimingBadge(source) {
+  if (!captionTimingBadge) return;
+  const isVoiceover = source === 'voiceover';
+  captionTimingBadge.textContent = isVoiceover ? 'Timing: voiceover words' : 'Timing: estimated';
+  captionTimingBadge.classList.toggle('is-voiceover', isVoiceover);
+  stage.dataset.wordTimingSource = isVoiceover ? 'voiceover' : 'estimated';
 }
 
 function effectiveCaptionStyle(scene) {

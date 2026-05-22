@@ -276,6 +276,7 @@ function loadSampleScenes() {
 function collectScenes() {
   return [...sceneTableBody.querySelectorAll('tr.scene-main')].map(row => {
     const designRow = row.nextElementSibling;
+    const words = parseWords(row.dataset.words);
     return {
       start: Number(row.querySelector('.scene-start').value || 0),
       end: Number(row.querySelector('.scene-end').value || 0),
@@ -294,7 +295,8 @@ function collectScenes() {
       captionSize: designRow.querySelector('.scene-caption-size').value,
       captionAccent: designRow.querySelector('.scene-caption-accent').value,
       captionAnimationAmount: Number(designRow.querySelector('.scene-caption-animation-amount').value || DEFAULT_DESIGN.captionAnimationAmount),
-      words: parseWords(row.dataset.words),
+      words,
+      wordTimingSource: hasVoiceoverWordTiming(words) ? 'voiceover' : 'estimated',
     };
   }).filter(s => s.end > s.start && (s.caption || s.narration));
 }
@@ -306,6 +308,10 @@ function parseWords(value) {
   } catch {
     return [];
   }
+}
+
+function hasVoiceoverWordTiming(words) {
+  return words.some((word) => word.source === 'voiceover' || (word.source !== 'estimated' && Number.isFinite(Number(word.start)) && Number.isFinite(Number(word.end))));
 }
 
 function collectClips() {
