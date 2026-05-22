@@ -282,7 +282,7 @@ def transcribe_audio_to_scenes(audio_path: Path, duration_seconds: float) -> lis
 
     model_name = os.environ.get("PROMO_STUDIO_WHISPER_MODEL", "base")
     model = WhisperModel(model_name, device="cpu", compute_type="int8")
-    segments, _info = model.transcribe(str(audio_path), vad_filter=True)
+    segments, _info = model.transcribe(str(audio_path), vad_filter=True, word_timestamps=True)
 
     scenes: list[dict[str, Any]] = []
     for segment in segments:
@@ -297,11 +297,24 @@ def transcribe_audio_to_scenes(audio_path: Path, duration_seconds: float) -> lis
             end = min(end, duration_seconds)
         if end <= start:
             continue
+        words = []
+        for word in getattr(segment, "words", None) or []:
+            word_text = " ".join(str(getattr(word, "word", "") or "").split())
+            if not word_text:
+                continue
+            word_start = max(start, float(getattr(word, "start", start) or start))
+            word_end = min(end, float(getattr(word, "end", word_start + 0.2) or word_start + 0.2))
+            words.append({
+                "text": word_text,
+                "start": round(word_start, 3),
+                "end": round(max(word_start + 0.04, word_end), 3),
+            })
         scenes.append({
             "start": round(start, 2),
             "end": round(end, 2),
             "caption": caption_text(text),
             "narration": text,
+            "words": words,
         })
 
     if not scenes:

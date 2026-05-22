@@ -125,6 +125,7 @@ function addScene(scene = {}) {
   const tr = document.createElement('tr');
   tr.className = 'scene-main';
   tr.dataset.designRow = rowId;
+  tr.dataset.words = JSON.stringify(Array.isArray(scene.words) ? scene.words : []);
   tr.innerHTML = `
     <td><input type="number" step="0.01" min="0" class="scene-start" value="${scene.start ?? ''}" /></td>
     <td><input type="number" step="0.01" min="0" class="scene-end" value="${scene.end ?? ''}" /></td>
@@ -293,8 +294,18 @@ function collectScenes() {
       captionSize: designRow.querySelector('.scene-caption-size').value,
       captionAccent: designRow.querySelector('.scene-caption-accent').value,
       captionAnimationAmount: Number(designRow.querySelector('.scene-caption-animation-amount').value || DEFAULT_DESIGN.captionAnimationAmount),
+      words: parseWords(row.dataset.words),
     };
   }).filter(s => s.end > s.start && (s.caption || s.narration));
+}
+
+function parseWords(value) {
+  try {
+    const words = JSON.parse(value || '[]');
+    return Array.isArray(words) ? words : [];
+  } catch {
+    return [];
+  }
 }
 
 function collectClips() {

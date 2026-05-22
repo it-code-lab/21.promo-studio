@@ -10,6 +10,12 @@ const cleanBtn = document.querySelector('#cleanBtn');
 const sceneCamera = document.querySelector('.scene-camera');
 const tabletStage = document.querySelector('.tablet-stage');
 const captionStyleTray = document.querySelector('#captionStyleTray');
+const captionPositionSelect = document.querySelector('#previewCaptionPosition');
+const captionWordsInput = document.querySelector('#previewWordsPerGroup');
+const captionWordsValue = document.querySelector('#previewWordsValue');
+const captionHighlightSelect = document.querySelector('#previewHighlightMode');
+const captionSizeSelect = document.querySelector('#previewCaptionSize');
+const resetCaptionPreviewBtn = document.querySelector('#resetCaptionPreviewBtn');
 
 const assetUrl = (path) => path ? `/preview-assets/${path}` : '';
 const BACKGROUNDS = {
@@ -48,13 +54,19 @@ const CAPTION_STYLE_PRESETS = [
   { id: 'kinetic-stack', label: 'Kinetic stack', sample: 'Stack' },
   { id: 'minimal-subtitle', label: 'Minimal subtitle', sample: 'Subtitle' },
   { id: 'device-callout', label: 'Device callout', sample: 'Callout' },
+  { id: 'creator-pop', label: 'Creator pop', sample: 'Viral' },
+  { id: 'karaoke-card', label: 'Karaoke card', sample: 'Karaoke' },
 ];
 const scenes = Array.isArray(project.scenes) ? project.scenes : [];
 const duration = Math.max(5, Number(project.durationSeconds || 30));
 const ctaStart = Math.max(0, duration - 5.6);
+const captionTimeline = scenes.map((scene) => ({ scene, words: sceneWords(scene) }));
+const previewSettingsKey = `promo-preview-captions:${project.id || 'default'}`;
 let activeSceneKey = '';
 let animationFrame = null;
-let previewCaptionStyleOverride = '';
+let activeCaptionGroupKey = '';
+let lastCaptionRenderKey = '';
+let previewCaptionSettings = loadPreviewCaptionSettings();
 
 stage.classList.remove('vertical', 'landscape', 'square');
 stage.classList.add(project.format || 'vertical');
@@ -71,48 +83,124 @@ if (project.assets?.logo) {
 
 ctaPill.textContent = project.cta || 'Try it free today';
 
+function activeSceneEntry(seconds) {
+  const entry = captionTimeline.find((item) => seconds >= Number(item.scene.start || 0) && seconds < Number(item.scene.end || 0)) || captionTimeline[captionTimeline.length - 1] || { scene: {}, words: [] };
+  return { scene: { ...DEFAULT_SCENE, ...entry.scene }, words: entry.words };
+}
+
 function activeScene(seconds) {
-  const scene = scenes.find((item) => seconds >= Number(item.start || 0) && seconds < Number(item.end || 0)) || scenes[scenes.length - 1] || {};
-  return { ...DEFAULT_SCENE, ...scene };
+  return activeSceneEntry(seconds).scene;
 }
 
-function setCaption(caption, scene) {
+function sceneWords(scene) {
+  const start = Number(scene.start || 0);
+  const end = Math.max(start + 0.4, Number(scene.end || start + 3));
+  const storedWords = Array.isArray(scene.words) ? scene.words : [];
+  if (storedWords.length) {
+    return storedWords
+      .map((word) => ({
+        text: cleanWord(word.text || word.word || ''),
+        start: Number(word.start ?? start),
+        end: Number(word.end ?? word.start ?? end),
+      }))
+      .filter((word) => word.text)
+      .map((word, index, words) => ({
+        ...word,
+        start: Number.isFinite(word.start) ? word.start : start,
+        end: Number.isFinite(word.end) && word.end > word.start ? word.end : (words[index + 1]?.start || end),
+      }));
+  }
+
+  const source = String(scene.narration || scene.caption || project.title || '').replace(/\n+/g, ' ');
+  const words = source.match(/[^\s]+/g) || [];
+  const span = (end - start) / Math.max(1, words.length);
+  return words.map((word, index) => ({
+    text: cleanWord(word),
+    start: start + index * span,
+    end: start + (index + 1) * span,
+  })).filter((word) => word.text);
+}
+
+function cleanWord(word) {
+  return String(word || '').replace(/\s+/g, ' ').trim();
+}
+
+function setCaption(caption, scene, seconds, words = []) {
+  const group = captionWordGroup(words, scene, seconds);
+  const lines = group.words.length
+    ? splitCaptionWords(group.words)
+    : String(caption || project.title || '').split(/\n+/).filter(Boolean).map((line) => line.split(/\s+/).filter(Boolean));
+  const groupKey = `${scene?.start || 0}|${group.words.map((word) => word.text).join(' ')}`;
+  const renderKey = `${groupKey}|${group.activeIndex}|${previewCaptionSettings.highlightMode}|${stage.dataset.captionStyle}|${stage.dataset.captionPosition}|${stage.dataset.captionSize}`;
+
+  if (lastCaptionRenderKey === renderKey) return;
+  lastCaptionRenderKey = renderKey;
+
+  if (activeCaptionGroupKey !== groupKey) {
+    activeCaptionGroupKey = groupKey;
+    captionChip.style.animation = 'none';
+    void captionChip.offsetWidth;
+    captionChip.style.animation = '';
+  }
+
   captionChip.innerHTML = '';
-  String(caption || project.title || '').split(/\n+/).filter(Boolean).forEach((line) => {
-    const span = document.createElement('span');
-    appendAccentedText(span, line, scene?.captionAccent || DEFAULT_SCENE.captionAccent);
-    captionChip.appendChild(span);
+  lines.forEach((lineWords) => {
+    const line = document.createElement('span');
+    line.className = 'caption-line';
+    lineWords.forEach((word, index) => {
+      const wordEl = document.createElement('i');
+      const wordText = typeof word === 'string' ? word : word.text;
+      wordEl.textContent = wordText;
+      if (typeof word !== 'string') {
+        wordEl.classList.toggle('is-active', word.index === group.activeIndex);
+        wordEl.classList.toggle('is-past', word.index < group.activeIndex);
+        wordEl.style.setProperty('--word-progress', String(wordProgress(word, seconds)));
+      }
+      line.appendChild(wordEl);
+      if (index < lineWords.length - 1) {
+        line.appendChild(document.createTextNode(' '));
+      }
+    });
+    captionChip.appendChild(line);
   });
 }
 
-function appendAccentedText(root, text, accent) {
-  const words = String(text || '').split(/(\s+)/);
-  const wordIndexes = words
-    .map((part, index) => /\S/.test(part) ? index : -1)
-    .filter(index => index >= 0);
-  const accentIndex = accent === 'first-word'
-    ? wordIndexes[0]
-    : accent === 'last-word'
-      ? wordIndexes[wordIndexes.length - 1]
-      : -1;
-
-  words.forEach((part, index) => {
-    if (index === accentIndex) {
-      const mark = document.createElement('mark');
-      mark.textContent = part;
-      root.appendChild(mark);
-    } else {
-      root.appendChild(document.createTextNode(part));
-    }
+function captionWordGroup(words, scene, seconds) {
+  const timedWords = words.length ? words : sceneWords(scene || {});
+  if (!timedWords.length) return { words: [], activeIndex: -1 };
+  const foundIndex = timedWords.findIndex((word, index) => {
+    const nextStart = timedWords[index + 1]?.start ?? word.end;
+    return seconds >= word.start && seconds < Math.max(word.end, nextStart);
   });
+  const activeIndex = foundIndex === -1
+    ? (seconds < timedWords[0].start ? 0 : timedWords.length - 1)
+    : foundIndex;
+  const wordsPerGroup = Number(previewCaptionSettings.wordsPerGroup || 3);
+  const groupStart = Math.floor(activeIndex / wordsPerGroup) * wordsPerGroup;
+  return {
+    words: timedWords.slice(groupStart, groupStart + wordsPerGroup).map((word, offset) => ({ ...word, index: groupStart + offset })),
+    activeIndex,
+  };
+}
+
+function splitCaptionWords(words) {
+  if (words.length <= 4) return [words];
+  const midpoint = Math.ceil(words.length / 2);
+  return [words.slice(0, midpoint), words.slice(midpoint)];
+}
+
+function wordProgress(word, seconds) {
+  const length = Math.max(0.08, Number(word.end || 0) - Number(word.start || 0));
+  return Math.min(1, Math.max(0, (seconds - Number(word.start || 0)) / length));
 }
 
 function updatePreview() {
   const seconds = screenVideo.currentTime || 0;
-  const scene = activeScene(seconds);
+  const entry = activeSceneEntry(seconds);
+  const scene = entry.scene;
   applySceneDesign(scene);
-  setCaption(scene?.caption || project.title, scene);
-  setTraySelected(previewCaptionStyleOverride || scene.captionStyle || DEFAULT_SCENE.captionStyle);
+  setCaption(scene?.caption || project.title, scene, seconds, entry.words);
+  setTraySelected(effectiveCaptionStyle(scene));
   ctaPill.classList.toggle('hidden', seconds < ctaStart);
 
   if (seconds >= duration) {
@@ -123,7 +211,9 @@ function updatePreview() {
 }
 
 function applySceneDesign(scene) {
-  const captionStyle = previewCaptionStyleOverride || scene.captionStyle || DEFAULT_SCENE.captionStyle;
+  const captionStyle = effectiveCaptionStyle(scene);
+  const captionPosition = previewCaptionSettings.position || scene.captionPosition || DEFAULT_SCENE.captionPosition;
+  const captionSize = previewCaptionSettings.size || scene.captionSize || DEFAULT_SCENE.captionSize;
   const sceneKey = [
     scene.start,
     scene.background,
@@ -133,11 +223,13 @@ function applySceneDesign(scene) {
     scene.motionAmount,
     scene.transition,
     captionStyle,
-    scene.captionPosition,
+    captionPosition,
     scene.captionAnimation,
-    scene.captionSize,
+    captionSize,
     scene.captionAccent,
     scene.captionAnimationAmount,
+    previewCaptionSettings.wordsPerGroup,
+    previewCaptionSettings.highlightMode,
   ].join('|');
 
   if (activeSceneKey !== sceneKey) {
@@ -145,10 +237,11 @@ function applySceneDesign(scene) {
     backgroundImage.src = assetUrl(BACKGROUNDS[scene.background] || BACKGROUNDS[DEFAULT_SCENE.background]);
     stage.dataset.transition = scene.transition || DEFAULT_SCENE.transition;
     stage.dataset.captionStyle = captionStyle;
-    stage.dataset.captionPosition = scene.captionPosition || DEFAULT_SCENE.captionPosition;
+    stage.dataset.captionPosition = captionPosition;
     stage.dataset.captionAnimation = scene.captionAnimation || DEFAULT_SCENE.captionAnimation;
-    stage.dataset.captionSize = scene.captionSize || DEFAULT_SCENE.captionSize;
+    stage.dataset.captionSize = captionSize;
     stage.dataset.captionAccent = scene.captionAccent || DEFAULT_SCENE.captionAccent;
+    stage.dataset.highlightMode = previewCaptionSettings.highlightMode || 'word';
     sceneCamera.dataset.motion = scene.motion || DEFAULT_SCENE.motion;
     tabletStage.dataset.device = scene.device || DEFAULT_SCENE.device;
     tabletStage.dataset.angle = scene.angle || DEFAULT_SCENE.angle;
@@ -166,6 +259,10 @@ function applySceneDesign(scene) {
   const localProgress = Math.min(1, Math.max(0, (screenVideo.currentTime - Number(scene.start || 0)) / localDuration));
   const zoomBase = Number(scene.screenZoom || DEFAULT_SCENE.screenZoom);
   screenVideo.style.transform = `translate3d(0, 0, 0) scale(${zoomBase})`;
+}
+
+function effectiveCaptionStyle(scene) {
+  return previewCaptionSettings.style || scene.captionStyle || DEFAULT_SCENE.captionStyle;
 }
 
 function setCaptionMotionVars(scene) {
@@ -254,7 +351,8 @@ function renderCaptionStyleTray() {
   captionStyleTray.querySelectorAll('button').forEach((button) => {
     button.addEventListener('click', () => {
       const nextStyle = button.dataset.style || '';
-      previewCaptionStyleOverride = previewCaptionStyleOverride === nextStyle ? '' : nextStyle;
+      previewCaptionSettings.style = previewCaptionSettings.style === nextStyle ? '' : nextStyle;
+      savePreviewCaptionSettings();
       activeSceneKey = '';
       updatePreview();
     });
@@ -265,7 +363,77 @@ function setTraySelected(style) {
   if (!captionStyleTray) return;
   captionStyleTray.querySelectorAll('button').forEach((button) => {
     button.classList.toggle('active', button.dataset.style === style);
-    button.classList.toggle('override', Boolean(previewCaptionStyleOverride) && button.dataset.style === style);
+    button.classList.toggle('override', Boolean(previewCaptionSettings.style) && button.dataset.style === style);
+  });
+}
+
+function loadPreviewCaptionSettings() {
+  const defaults = {
+    style: '',
+    position: '',
+    wordsPerGroup: 3,
+    highlightMode: 'word',
+    size: '',
+  };
+  try {
+    return { ...defaults, ...JSON.parse(localStorage.getItem(previewSettingsKey) || '{}') };
+  } catch {
+    return defaults;
+  }
+}
+
+function savePreviewCaptionSettings() {
+  localStorage.setItem(previewSettingsKey, JSON.stringify(previewCaptionSettings));
+}
+
+function syncCaptionControls() {
+  if (captionPositionSelect) captionPositionSelect.value = previewCaptionSettings.position || '';
+  if (captionWordsInput) captionWordsInput.value = String(previewCaptionSettings.wordsPerGroup || 3);
+  if (captionWordsValue) captionWordsValue.textContent = String(previewCaptionSettings.wordsPerGroup || 3);
+  if (captionHighlightSelect) captionHighlightSelect.value = previewCaptionSettings.highlightMode || 'word';
+  if (captionSizeSelect) captionSizeSelect.value = previewCaptionSettings.size || '';
+}
+
+function wireCaptionControls() {
+  syncCaptionControls();
+  captionPositionSelect?.addEventListener('change', () => {
+    previewCaptionSettings.position = captionPositionSelect.value;
+    savePreviewCaptionSettings();
+    activeSceneKey = '';
+    updatePreview();
+  });
+  captionWordsInput?.addEventListener('input', () => {
+    previewCaptionSettings.wordsPerGroup = Number(captionWordsInput.value || 3);
+    if (captionWordsValue) captionWordsValue.textContent = String(previewCaptionSettings.wordsPerGroup);
+    savePreviewCaptionSettings();
+    updatePreview();
+  });
+  captionHighlightSelect?.addEventListener('change', () => {
+    previewCaptionSettings.highlightMode = captionHighlightSelect.value || 'word';
+    savePreviewCaptionSettings();
+    activeSceneKey = '';
+    updatePreview();
+  });
+  captionSizeSelect?.addEventListener('change', () => {
+    previewCaptionSettings.size = captionSizeSelect.value;
+    savePreviewCaptionSettings();
+    activeSceneKey = '';
+    updatePreview();
+  });
+  resetCaptionPreviewBtn?.addEventListener('click', () => {
+    previewCaptionSettings = {
+      style: '',
+      position: '',
+      wordsPerGroup: 3,
+      highlightMode: 'word',
+      size: '',
+    };
+    savePreviewCaptionSettings();
+    syncCaptionControls();
+    activeSceneKey = '';
+    activeCaptionGroupKey = '';
+    lastCaptionRenderKey = '';
+    updatePreview();
   });
 }
 
@@ -290,7 +458,8 @@ cleanBtn.addEventListener('click', () => {
 });
 
 if (!project.assets?.screen) {
-  setCaption(project.title, DEFAULT_SCENE);
+  setCaption(project.title, DEFAULT_SCENE, 0, []);
 }
 
 renderCaptionStyleTray();
+wireCaptionControls();
