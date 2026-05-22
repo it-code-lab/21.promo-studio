@@ -86,6 +86,32 @@
       </label>
       <span id="audioStatus" class="audio-status">Audio ready</span>
     </section>
+    <section class="preview-transport" aria-label="Preview timeline controls">
+      <div class="time-readout">
+        <strong id="currentTimeLabel">0:00</strong>
+        <span>/</span>
+        <span id="durationTimeLabel">0:00</span>
+      </div>
+      <input id="previewScrubber" type="range" min="0" max="{{ project.durationSeconds }}" step="0.01" value="0" />
+      <label>
+        Speed
+        <select id="previewSpeed">
+          <option value="0.75">0.75x</option>
+          <option value="1" selected>1x</option>
+          <option value="1.25">1.25x</option>
+          <option value="1.5">1.5x</option>
+        </select>
+      </label>
+      <button id="recordReadyBtn" type="button" title="Shift + R">Record ready</button>
+    </section>
+    <section class="shortcut-strip" aria-label="Keyboard shortcuts">
+      <span><kbd>Space</kbd>/<kbd>K</kbd> Play</span>
+      <span><kbd>C</kbd> Clean</span>
+      <span><kbd>R</kbd> Replay</span>
+      <span><kbd>Shift</kbd>+<kbd>R</kbd> Record ready</span>
+      <span><kbd>S</kbd> Stop</span>
+      <span><kbd>Esc</kbd> Exit clean</span>
+    </section>
 
     <section id="previewStage" class="preview-stage vertical">
       <div class="scene-camera">
@@ -106,6 +132,7 @@
       <img id="logoImage" class="preview-logo hidden" alt="" />
       <div id="captionChip" class="caption-chip"></div>
       <div id="ctaPill" class="cta-pill hidden"></div>
+      <div id="recordCountdown" class="record-countdown hidden">3</div>
     </section>
     <audio id="voiceoverAudio" preload="auto"></audio>
     <audio id="musicAudio" preload="auto" loop></audio>

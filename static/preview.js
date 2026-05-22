@@ -35,6 +35,12 @@ const musicEnabled = document.querySelector('#musicEnabled');
 const musicVolume = document.querySelector('#musicVolume');
 const musicVolumeValue = document.querySelector('#musicVolumeValue');
 const audioStatus = document.querySelector('#audioStatus');
+const previewScrubber = document.querySelector('#previewScrubber');
+const currentTimeLabel = document.querySelector('#currentTimeLabel');
+const durationTimeLabel = document.querySelector('#durationTimeLabel');
+const previewSpeed = document.querySelector('#previewSpeed');
+const recordReadyBtn = document.querySelector('#recordReadyBtn');
+const recordCountdown = document.querySelector('#recordCountdown');
 const screenCtx = screenCanvas?.getContext('2d', { alpha: false });
 
 const assetUrl = (path) => path ? `/preview-assets/${path}` : '';
@@ -96,6 +102,9 @@ let previewAudioSettings = loadPreviewAudioSettings();
 let playbackState = 'stopped';
 let previewStartedAt = 0;
 let pausedProjectTime = 0;
+let playbackRate = 1;
+let isScrubbing = false;
+let countdownTimer = null;
 
 stage.classList.remove('vertical', 'landscape', 'square');
 stage.classList.add(project.format || 'vertical');
@@ -247,6 +256,7 @@ function updatePreview() {
   setCaption(scene?.caption || project.title, scene, seconds, entry.words);
   setTraySelected(effectiveCaptionStyle(scene));
   setTimingBadge(entry.timingSource);
+  updateTransport(seconds);
   ctaPill.classList.toggle('hidden', seconds < ctaStart);
 
   if (seconds >= duration) {
@@ -482,7 +492,7 @@ function mediaElements() {
 
 function currentProjectTime() {
   if (playbackState === 'playing') {
-    return Math.min(duration, Math.max(0, (performance.now() - previewStartedAt) / 1000));
+    return Math.min(duration, Math.max(0, ((performance.now() - previewStartedAt) / 1000) * playbackRate));
   }
   return Math.min(duration, Math.max(0, pausedProjectTime));
 }
@@ -559,7 +569,7 @@ async function playSyncedMedia({ fromStart = false } = {}) {
   if (fromStart) {
     pausedProjectTime = 0;
   }
-  previewStartedAt = performance.now() - pausedProjectTime * 1000;
+  previewStartedAt = performance.now() - (pausedProjectTime / playbackRate) * 1000;
   try {
     if (Number.isFinite(screenVideo.duration) && screenVideo.duration > 0) {
       screenVideo.currentTime = pausedProjectTime % screenVideo.duration;
@@ -570,6 +580,7 @@ async function playSyncedMedia({ fromStart = false } = {}) {
     // Ignore media that is not seekable yet.
   }
   playbackState = 'playing';
+  applyPlaybackRate();
   syncAudioToVideo();
   updateTimelineClips(pausedProjectTime);
   applyAudioSettings();
@@ -593,6 +604,7 @@ function pausePreview() {
 }
 
 function stopPreview({ reset = true, render = true } = {}) {
+  cancelRecordCountdown();
   if (animationFrame) cancelAnimationFrame(animationFrame);
   pausedProjectTime = reset ? 0 : currentProjectTime();
   playbackState = 'stopped';
@@ -609,6 +621,7 @@ function stopPreview({ reset = true, render = true } = {}) {
   activeCaptionGroupKey = '';
   lastCaptionRenderKey = '';
   updatePlaybackButtons();
+  updateTransport(pausedProjectTime);
   if (render) updatePreview();
 }
 
@@ -617,6 +630,48 @@ function updatePlaybackButtons() {
   pauseBtn?.toggleAttribute('disabled', playbackState !== 'playing');
   resumeBtn?.toggleAttribute('disabled', playbackState !== 'paused');
   stopBtn?.toggleAttribute('disabled', playbackState === 'stopped');
+}
+
+function seekPreview(seconds) {
+  pausedProjectTime = Math.min(duration, Math.max(0, Number(seconds) || 0));
+  if (playbackState === 'playing') {
+    previewStartedAt = performance.now() - (pausedProjectTime / playbackRate) * 1000;
+  }
+  try {
+    screenVideo.currentTime = Number.isFinite(screenVideo.duration) && screenVideo.duration > 0
+      ? pausedProjectTime % screenVideo.duration
+      : pausedProjectTime;
+  } catch {
+    // Ignore media that is not seekable yet.
+  }
+  syncAudioToVideo();
+  updateTimelineClips(pausedProjectTime);
+  activeCaptionGroupKey = '';
+  lastCaptionRenderKey = '';
+  updatePreview();
+}
+
+function applyPlaybackRate() {
+  mediaElements().forEach((media) => {
+    try {
+      media.playbackRate = playbackRate;
+    } catch {
+      // Some media elements may reject rate changes before metadata.
+    }
+  });
+}
+
+function updateTransport(seconds = currentProjectTime()) {
+  if (previewScrubber && !isScrubbing) previewScrubber.value = String(Math.min(duration, Math.max(0, seconds)));
+  if (currentTimeLabel) currentTimeLabel.textContent = formatTime(seconds);
+  if (durationTimeLabel) durationTimeLabel.textContent = formatTime(duration);
+}
+
+function formatTime(seconds) {
+  const safeSeconds = Math.max(0, Number(seconds) || 0);
+  const minutes = Math.floor(safeSeconds / 60);
+  const wholeSeconds = Math.floor(safeSeconds % 60);
+  return `${minutes}:${String(wholeSeconds).padStart(2, '0')}`;
 }
 
 function renderCaptionStyleTray() {
@@ -748,6 +803,63 @@ function wireAudioControls() {
   });
 }
 
+function wireTransportControls() {
+  if (previewScrubber) {
+    previewScrubber.max = String(duration);
+    previewScrubber.addEventListener('input', () => {
+      isScrubbing = true;
+      const seconds = Number(previewScrubber.value || 0);
+      updateTransport(seconds);
+    });
+    previewScrubber.addEventListener('change', () => {
+      isScrubbing = false;
+      seekPreview(Number(previewScrubber.value || 0));
+    });
+    previewScrubber.addEventListener('pointerup', () => {
+      isScrubbing = false;
+    });
+  }
+  previewSpeed?.addEventListener('change', () => {
+    const current = currentProjectTime();
+    playbackRate = Math.max(0.25, Number(previewSpeed.value || 1));
+    pausedProjectTime = current;
+    if (playbackState === 'playing') {
+      previewStartedAt = performance.now() - (pausedProjectTime / playbackRate) * 1000;
+    }
+    applyPlaybackRate();
+  });
+  recordReadyBtn?.addEventListener('click', startRecordReady);
+  updateTransport(0);
+}
+
+function startRecordReady() {
+  cancelRecordCountdown();
+  stopPreview();
+  toggleCleanView(true);
+  let count = 3;
+  recordCountdown.textContent = String(count);
+  recordCountdown.classList.remove('hidden');
+  countdownTimer = setInterval(() => {
+    count -= 1;
+    if (count > 0) {
+      recordCountdown.textContent = String(count);
+      return;
+    }
+    clearInterval(countdownTimer);
+    countdownTimer = null;
+    recordCountdown.classList.add('hidden');
+    playSyncedMedia({ fromStart: true });
+  }, 1000);
+}
+
+function cancelRecordCountdown() {
+  if (countdownTimer) {
+    clearInterval(countdownTimer);
+    countdownTimer = null;
+  }
+  recordCountdown?.classList.add('hidden');
+}
+
 function isEditableShortcutTarget(target) {
   if (!target) return false;
   const tagName = String(target.tagName || '').toLowerCase();
@@ -772,6 +884,9 @@ function wireKeyboardShortcuts() {
       } else {
         playSyncedMedia({ fromStart: playbackState === 'stopped' });
       }
+    } else if (key === 'r' && event.shiftKey) {
+      event.preventDefault();
+      startRecordReady();
     } else if (key === 'c') {
       event.preventDefault();
       toggleCleanView();
@@ -783,6 +898,7 @@ function wireKeyboardShortcuts() {
       stopPreview();
     } else if (key === 'escape' && document.body.classList.contains('clean')) {
       event.preventDefault();
+      cancelRecordCountdown();
       toggleCleanView(false);
     }
   });
@@ -836,6 +952,7 @@ if (!project.assets?.screen) {
 renderCaptionStyleTray();
 wireCaptionControls();
 wireAudioControls();
+wireTransportControls();
 wireKeyboardShortcuts();
 updatePlaybackButtons();
 updatePreview();
