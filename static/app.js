@@ -3,6 +3,10 @@ const clipTableBody = document.querySelector('#clipTable tbody');
 const projectForm = document.querySelector('#projectForm');
 const message = document.querySelector('#message');
 const projectsList = document.querySelector('#projectsList');
+const globalCaptionStyles = document.querySelector('#globalCaptionStyles');
+const globalCaptionPosition = document.querySelector('#globalCaptionPosition');
+const globalCaptionSize = document.querySelector('#globalCaptionSize');
+const globalCaptionAccent = document.querySelector('#globalCaptionAccent');
 
 const BACKGROUND_PRESETS = [
   { id: 'reading-room', label: 'Reading room', thumb: '/preview-assets/assets/lifestyle-reading-room.png' },
@@ -108,6 +112,10 @@ const DEFAULT_DESIGN = {
   captionAccent: 'none',
   captionAnimationAmount: 1.4,
 };
+const DEFAULT_CLIP_DURATION = 4;
+let selectedSceneId = '';
+let dragSceneId = '';
+let dragClipId = '';
 
 function showMessage(text, type = '') {
   message.textContent = text;
@@ -119,25 +127,57 @@ function hideMessage() {
   message.textContent = '';
 }
 
-function addScene(scene = {}) {
+function globalCaptionDesign() {
+  return {
+    captionStyle: checkedValue(document, '.global-caption-style', DEFAULT_DESIGN.captionStyle),
+    captionPosition: globalCaptionPosition?.value || DEFAULT_DESIGN.captionPosition,
+    captionAnimation: 'none',
+    captionSize: globalCaptionSize?.value || DEFAULT_DESIGN.captionSize,
+    captionAccent: globalCaptionAccent?.value || DEFAULT_DESIGN.captionAccent,
+    captionAnimationAmount: DEFAULT_DESIGN.captionAnimationAmount,
+  };
+}
+
+function initGlobalCaptionControls() {
+  if (globalCaptionStyles) {
+    globalCaptionStyles.innerHTML = renderCaptionStyleOptions(CAPTION_STYLE_PRESETS, DEFAULT_DESIGN.captionStyle, 'global-caption-style', 'global-caption-style');
+  }
+  if (globalCaptionPosition) globalCaptionPosition.innerHTML = renderOptions(CAPTION_POSITION_PRESETS, DEFAULT_DESIGN.captionPosition);
+  if (globalCaptionSize) globalCaptionSize.innerHTML = renderOptions(CAPTION_SIZE_PRESETS, DEFAULT_DESIGN.captionSize);
+  if (globalCaptionAccent) globalCaptionAccent.innerHTML = renderOptions(CAPTION_ACCENT_PRESETS, DEFAULT_DESIGN.captionAccent);
+}
+
+function addScene(scene = {}, options = {}) {
   const rowId = `scene-${Date.now()}-${Math.round(Math.random() * 100000)}`;
   const design = { ...DEFAULT_DESIGN, ...scene };
   const tr = document.createElement('tr');
   tr.className = 'scene-main';
   tr.dataset.designRow = rowId;
+  tr.dataset.sceneId = rowId;
   tr.dataset.words = JSON.stringify(Array.isArray(scene.words) ? scene.words : []);
+  tr.draggable = true;
   tr.innerHTML = `
+    <td class="drag-cell"><button type="button" class="drag-handle" title="Drag scene">☰</button></td>
     <td><input type="number" step="0.01" min="0" class="scene-start" value="${scene.start ?? ''}" /></td>
     <td><input type="number" step="0.01" min="0" class="scene-end" value="${scene.end ?? ''}" /></td>
     <td><textarea rows="2" class="scene-caption">${escapeHtml(scene.caption ?? '')}</textarea></td>
     <td><textarea rows="2" class="scene-narration">${escapeHtml(scene.narration ?? '')}</textarea></td>
-    <td><button type="button" class="delete">×</button></td>
+    <td class="row-actions">
+      <button type="button" class="insert-after small-icon-btn" title="Insert scene after this">+</button>
+      <button type="button" class="delete">×</button>
+    </td>
   `;
   const designRow = document.createElement('tr');
   designRow.className = 'scene-design-row';
   designRow.dataset.rowId = rowId;
   designRow.innerHTML = `
-    <td colspan="5">
+    <td colspan="6">
+      <details class="scene-advanced">
+        <summary>Scene visual overrides</summary>
+        <label class="override-toggle">
+          <input type="checkbox" class="scene-caption-override" ${scene.captionOverride ? 'checked' : ''} />
+          Override global caption style for this scene
+        </label>
       <div class="scene-design-grid">
         <div class="design-field wide">
           <span>Background</span>
@@ -192,11 +232,44 @@ function addScene(scene = {}) {
           <input type="range" min="0.5" max="2.2" step="0.05" class="scene-caption-animation-amount" value="${Number(design.captionAnimationAmount || DEFAULT_DESIGN.captionAnimationAmount)}" />
         </label>
       </div>
+      </details>
     </td>
   `;
-  tr.querySelector('.delete').addEventListener('click', () => {
+  tr.addEventListener('click', () => selectScene(rowId));
+  tr.addEventListener('dragstart', (event) => {
+    dragSceneId = rowId;
+    tr.classList.add('dragging');
+    event.dataTransfer.effectAllowed = 'move';
+  });
+  tr.addEventListener('dragend', () => {
+    dragSceneId = '';
+    tr.classList.remove('dragging');
+    [...sceneTableBody.querySelectorAll('.drag-over')].forEach(row => row.classList.remove('drag-over'));
+    refreshClipPlacementOptions();
+  });
+  tr.addEventListener('dragover', (event) => {
+    if (!dragSceneId || dragSceneId === rowId) return;
+    event.preventDefault();
+    tr.classList.add('drag-over');
+  });
+  tr.addEventListener('dragleave', () => tr.classList.remove('drag-over'));
+  tr.addEventListener('drop', (event) => {
+    event.preventDefault();
+    moveScenePair(dragSceneId, rowId);
+  });
+  tr.querySelector('.insert-after').addEventListener('click', (event) => {
+    event.stopPropagation();
+    addScene(afterSceneDefaults(rowId), { afterSceneId: rowId });
+  });
+  tr.querySelector('.delete').addEventListener('click', (event) => {
+    event.stopPropagation();
     designRow.remove();
     tr.remove();
+    if (selectedSceneId === rowId) {
+      selectedSceneId = sceneRows().at(-1)?.dataset.sceneId || '';
+      if (selectedSceneId) selectScene(selectedSceneId);
+    }
+    refreshClipPlacementOptions();
   });
   designRow.querySelector('.scene-motion-amount').addEventListener('input', (event) => {
     event.target.closest('.zoom-field').querySelector('strong').textContent = `${Number(event.target.value).toFixed(2)}×`;
@@ -207,8 +280,9 @@ function addScene(scene = {}) {
   designRow.querySelector('.scene-caption-animation-amount').addEventListener('input', (event) => {
     event.target.closest('.zoom-field').querySelector('strong').textContent = `${Number(event.target.value).toFixed(2)}×`;
   });
-  sceneTableBody.appendChild(tr);
-  sceneTableBody.appendChild(designRow);
+  insertScenePair(tr, designRow, options.afterSceneId);
+  selectScene(rowId);
+  refreshClipPlacementOptions();
 }
 
 function renderOptions(presets, selected) {
@@ -235,34 +309,137 @@ function renderDeviceOptions(presets, selected, name) {
   `).join('');
 }
 
-function renderCaptionStyleOptions(presets, selected, name) {
+function renderCaptionStyleOptions(presets, selected, name, className = 'scene-caption-style') {
   return presets.map((preset) => `
     <label class="caption-style-option ${preset.id}">
-      <input type="radio" class="scene-caption-style" name="${name}" value="${preset.id}" ${preset.id === selected ? 'checked' : ''} />
+      <input type="radio" class="${className}" name="${name}" value="${preset.id}" ${preset.id === selected ? 'checked' : ''} />
       <span class="caption-style-preview"><b>${preset.sample}</b><em>Product</em></span>
       <span>${preset.label}</span>
     </label>
   `).join('');
 }
 
+function insertScenePair(tr, designRow, afterSceneId = '') {
+  if (afterSceneId) {
+    const anchor = sceneTableBody.querySelector(`tr.scene-main[data-scene-id="${afterSceneId}"]`);
+    const anchorDesign = anchor?.nextElementSibling;
+    if (anchorDesign) {
+      anchorDesign.after(tr, designRow);
+      return;
+    }
+  }
+  sceneTableBody.appendChild(tr);
+  sceneTableBody.appendChild(designRow);
+}
+
+function moveScenePair(sourceId, targetId) {
+  if (!sourceId || !targetId || sourceId === targetId) return;
+  const source = sceneTableBody.querySelector(`tr.scene-main[data-scene-id="${sourceId}"]`);
+  const target = sceneTableBody.querySelector(`tr.scene-main[data-scene-id="${targetId}"]`);
+  if (!source || !target) return;
+  const sourceDesign = source.nextElementSibling;
+  const targetDesign = target.nextElementSibling;
+  const beforeTarget = source.compareDocumentPosition(target) & Node.DOCUMENT_POSITION_FOLLOWING;
+  if (beforeTarget) {
+    targetDesign.after(source, sourceDesign);
+  } else {
+    target.before(source, sourceDesign);
+  }
+  selectScene(sourceId);
+  refreshClipPlacementOptions();
+}
+
+function selectScene(rowId) {
+  selectedSceneId = rowId;
+  sceneTableBody.querySelectorAll('tr.scene-main').forEach(row => row.classList.toggle('selected-row', row.dataset.sceneId === rowId));
+}
+
+function sceneRows() {
+  return [...sceneTableBody.querySelectorAll('tr.scene-main')];
+}
+
+function afterSceneDefaults(rowId) {
+  const row = sceneTableBody.querySelector(`tr.scene-main[data-scene-id="${rowId}"]`);
+  const end = Number(row?.querySelector('.scene-end')?.value || 0);
+  const next = row?.nextElementSibling?.nextElementSibling;
+  const nextStart = Number(next?.querySelector?.('.scene-start')?.value || end + 4);
+  const duration = Math.max(1, Math.min(4, nextStart - end || 4));
+  return { start: end, end: end + duration, caption: '', narration: '', ...globalCaptionDesign() };
+}
+
 function addClip(clip = {}) {
   const rowId = `clip_${Date.now()}_${Math.round(Math.random() * 100000)}`;
   const tr = document.createElement('tr');
   tr.className = 'clip-row';
+  tr.dataset.clipId = rowId;
+  tr.draggable = true;
   tr.innerHTML = `
-    <td><input type="number" step="0.01" min="0" class="clip-start" value="${clip.start ?? ''}" /></td>
-    <td><input type="number" step="0.01" min="0" class="clip-end" value="${clip.end ?? ''}" /></td>
+    <td class="drag-cell"><button type="button" class="drag-handle" title="Drag clip">☰</button></td>
+    <td><select class="clip-placement"></select></td>
+    <td><input type="number" step="0.25" min="0.5" class="clip-duration" value="${clip.durationSeconds || DEFAULT_CLIP_DURATION}" /></td>
     <td><select class="clip-mode">${renderOptions(CLIP_MODE_PRESETS, clip.mode || 'device-screen')}</select></td>
     <td><input name="${rowId}" type="file" class="clip-file" accept="video/mp4,video/webm,video/quicktime,video/x-matroska" /></td>
     <td><input class="clip-label" value="${escapeHtml(clip.label || '')}" placeholder="Optional" /></td>
     <td><button type="button" class="delete">×</button></td>
   `;
+  tr.addEventListener('dragstart', (event) => {
+    dragClipId = rowId;
+    tr.classList.add('dragging');
+    event.dataTransfer.effectAllowed = 'move';
+  });
+  tr.addEventListener('dragend', () => {
+    dragClipId = '';
+    tr.classList.remove('dragging');
+    [...clipTableBody.querySelectorAll('.drag-over')].forEach(row => row.classList.remove('drag-over'));
+  });
+  tr.addEventListener('dragover', (event) => {
+    if (!dragClipId || dragClipId === rowId) return;
+    event.preventDefault();
+    tr.classList.add('drag-over');
+  });
+  tr.addEventListener('dragleave', () => tr.classList.remove('drag-over'));
+  tr.addEventListener('drop', (event) => {
+    event.preventDefault();
+    moveClipRow(dragClipId, rowId);
+  });
   tr.querySelector('.delete').addEventListener('click', () => tr.remove());
   clipTableBody.appendChild(tr);
+  refreshClipPlacementOptions();
+}
+
+function moveClipRow(sourceId, targetId) {
+  if (!sourceId || !targetId || sourceId === targetId) return;
+  const source = clipTableBody.querySelector(`tr.clip-row[data-clip-id="${sourceId}"]`);
+  const target = clipTableBody.querySelector(`tr.clip-row[data-clip-id="${targetId}"]`);
+  if (!source || !target) return;
+  const beforeTarget = source.compareDocumentPosition(target) & Node.DOCUMENT_POSITION_FOLLOWING;
+  if (beforeTarget) {
+    target.after(source);
+  } else {
+    target.before(source);
+  }
+}
+
+function refreshClipPlacementOptions() {
+  const rows = sceneRows();
+  const options = [
+    { value: 'start', label: 'Start of video' },
+    ...rows.map((row, index) => ({
+      value: row.dataset.sceneId,
+      label: `After scene ${index + 1}`,
+    })),
+  ];
+  clipTableBody.querySelectorAll('.clip-placement').forEach((select) => {
+    const previous = select.value;
+    select.innerHTML = options.map((option) => `<option value="${option.value}">${option.label}</option>`).join('');
+    const fallback = options.some((option) => option.value === selectedSceneId) ? selectedSceneId : (options[options.length - 1]?.value || 'start');
+    select.value = options.some((option) => option.value === previous) ? previous : fallback;
+  });
 }
 
 function loadSampleScenes() {
   sceneTableBody.innerHTML = '';
+  selectedSceneId = '';
   [
     { start: 0, end: 4, caption: 'Story time,\njust got smarter', narration: 'Story time just got smarter.', background: 'reading-room', device: 'tablet-pro', angle: 'low-desk-left', motion: 'slow-push-in', motionAmount: 2.2, screenZoom: 1, transition: 'soft-fade', captionStyle: 'editorial-card', captionPosition: 'top', captionAnimation: 'none', captionSize: 'large', captionAccent: 'last-word', captionAnimationAmount: 1.65 },
     { start: 4, end: 9, caption: 'the interactive story companion', narration: 'Meet the interactive story companion for young readers.', background: 'office-desk', device: 'laptop-silver', angle: 'front-center', motion: 'screen-focus', motionAmount: 2.2, screenZoom: 1, transition: 'soft-fade', captionStyle: 'glass-card', captionPosition: 'top', captionAnimation: 'none', captionSize: 'standard', captionAccent: 'none', captionAnimationAmount: 1.4 },
@@ -271,12 +448,15 @@ function loadSampleScenes() {
     { start: 22, end: 26, caption: 'built from your real product', narration: 'Built from your real website or software recording.', background: 'meeting-room', device: 'browser-window', angle: 'front-center', motion: 'pan-right', motionAmount: 2.2, screenZoom: 1, transition: 'clean-cut', captionStyle: 'minimal-subtitle', captionPosition: 'bottom', captionAnimation: 'none', captionSize: 'standard', captionAccent: 'none', captionAnimationAmount: 1.2 },
     { start: 26, end: 30, caption: 'Try it free today', narration: 'Try it free today.', background: 'creator-studio', device: 'tablet-pro', angle: 'floating-hero', motion: 'cta-push', motionAmount: 2.2, screenZoom: 1, transition: 'soft-fade', captionStyle: 'device-callout', captionPosition: 'device', captionAnimation: 'none', captionSize: 'large', captionAccent: 'first-word', captionAnimationAmount: 1.8 },
   ].forEach(addScene);
+  refreshClipPlacementOptions();
 }
 
 function collectScenes() {
+  const globalCaption = globalCaptionDesign();
   return [...sceneTableBody.querySelectorAll('tr.scene-main')].map(row => {
     const designRow = row.nextElementSibling;
     const words = parseWords(row.dataset.words);
+    const hasCaptionOverride = designRow.querySelector('.scene-caption-override')?.checked;
     return {
       start: Number(row.querySelector('.scene-start').value || 0),
       end: Number(row.querySelector('.scene-end').value || 0),
@@ -289,12 +469,13 @@ function collectScenes() {
       motionAmount: Number(designRow.querySelector('.scene-motion-amount').value || DEFAULT_DESIGN.motionAmount),
       screenZoom: Number(designRow.querySelector('.scene-screen-zoom').value || DEFAULT_DESIGN.screenZoom),
       transition: designRow.querySelector('.scene-transition').value,
-      captionStyle: checkedValue(designRow, '.scene-caption-style', DEFAULT_DESIGN.captionStyle),
-      captionPosition: designRow.querySelector('.scene-caption-position').value,
-      captionAnimation: designRow.querySelector('.scene-caption-animation').value,
-      captionSize: designRow.querySelector('.scene-caption-size').value,
-      captionAccent: designRow.querySelector('.scene-caption-accent').value,
-      captionAnimationAmount: Number(designRow.querySelector('.scene-caption-animation-amount').value || DEFAULT_DESIGN.captionAnimationAmount),
+      captionStyle: hasCaptionOverride ? checkedValue(designRow, '.scene-caption-style', globalCaption.captionStyle) : globalCaption.captionStyle,
+      captionPosition: hasCaptionOverride ? designRow.querySelector('.scene-caption-position').value : globalCaption.captionPosition,
+      captionAnimation: hasCaptionOverride ? designRow.querySelector('.scene-caption-animation').value : globalCaption.captionAnimation,
+      captionSize: hasCaptionOverride ? designRow.querySelector('.scene-caption-size').value : globalCaption.captionSize,
+      captionAccent: hasCaptionOverride ? designRow.querySelector('.scene-caption-accent').value : globalCaption.captionAccent,
+      captionAnimationAmount: hasCaptionOverride ? Number(designRow.querySelector('.scene-caption-animation-amount').value || DEFAULT_DESIGN.captionAnimationAmount) : globalCaption.captionAnimationAmount,
+      captionOverride: Boolean(hasCaptionOverride),
       words,
       wordTimingSource: hasVoiceoverWordTiming(words) ? 'voiceover' : 'estimated',
     };
@@ -315,11 +496,26 @@ function hasVoiceoverWordTiming(words) {
 }
 
 function collectClips() {
+  const sceneTimings = sceneRows().map((row) => ({
+    id: row.dataset.sceneId,
+    start: Number(row.querySelector('.scene-start').value || 0),
+    end: Number(row.querySelector('.scene-end').value || 0),
+  }));
+  const placementOffsets = new Map();
   return [...clipTableBody.querySelectorAll('tr.clip-row')].map(row => {
     const fileInput = row.querySelector('.clip-file');
+    const placement = row.querySelector('.clip-placement').value;
+    const baseStart = placement === 'start'
+      ? 0
+      : (sceneTimings.find((scene) => scene.id === placement)?.end ?? lastSceneEnd());
+    const duration = Number(row.querySelector('.clip-duration').value || DEFAULT_CLIP_DURATION);
+    const safeDuration = Math.max(0.5, duration);
+    const offset = placementOffsets.get(placement) || 0;
+    const start = baseStart + offset;
+    placementOffsets.set(placement, offset + safeDuration);
     return {
-      start: Number(row.querySelector('.clip-start').value || 0),
-      end: Number(row.querySelector('.clip-end').value || 0),
+      start,
+      end: start + safeDuration,
       mode: row.querySelector('.clip-mode').value,
       label: row.querySelector('.clip-label').value.trim() || fileInput.files[0]?.name || 'Clip',
       fileField: fileInput.name,
@@ -328,6 +524,37 @@ function collectClips() {
     const row = clipTableBody.querySelectorAll('tr.clip-row')[index];
     return clip.end > clip.start && row.querySelector('.clip-file').files.length > 0;
   });
+}
+
+function lastSceneEnd() {
+  return Math.max(0, ...sceneRows().map(row => Number(row.querySelector('.scene-end').value || 0)));
+}
+
+function reflowSceneTimings() {
+  let cursor = 0;
+  sceneRows().forEach((row) => {
+    const startInput = row.querySelector('.scene-start');
+    const endInput = row.querySelector('.scene-end');
+    const oldStart = Number(startInput.value || cursor);
+    const oldEnd = Number(endInput.value || oldStart + 4);
+    const duration = Math.max(0.5, oldEnd - oldStart);
+    startInput.value = Number(cursor.toFixed(2));
+    endInput.value = Number((cursor + duration).toFixed(2));
+    shiftStoredWords(row, cursor - oldStart);
+    cursor += duration;
+  });
+  refreshClipPlacementOptions();
+}
+
+function shiftStoredWords(row, delta) {
+  if (!delta) return;
+  const words = parseWords(row.dataset.words);
+  if (!words.length) return;
+  row.dataset.words = JSON.stringify(words.map((word) => ({
+    ...word,
+    start: Number((Number(word.start || 0) + delta).toFixed(3)),
+    end: Number((Number(word.end || 0) + delta).toFixed(3)),
+  })));
 }
 
 async function generateScenesFromVoiceover(button) {
@@ -352,7 +579,12 @@ async function generateScenesFromVoiceover(button) {
     if (!res.ok) throw new Error(data.error || 'Could not transcribe voiceover');
 
     sceneTableBody.innerHTML = '';
+    selectedSceneId = '';
     data.scenes.forEach(addScene);
+    if (data.durationSeconds && projectForm.elements.durationSeconds) {
+      projectForm.elements.durationSeconds.value = Math.ceil(Number(data.durationSeconds));
+    }
+    refreshClipPlacementOptions();
     showMessage(`Generated ${data.scenes.length} caption scenes from voiceover.`, 'success');
   } catch (err) {
     showMessage(String(err.message || err), 'error');
@@ -478,11 +710,17 @@ projectForm.addEventListener('submit', async (event) => {
   }
 });
 
-document.querySelector('#addSceneBtn').addEventListener('click', () => addScene());
+document.querySelector('#addSceneBtn').addEventListener('click', () => addScene({ start: lastSceneEnd(), end: lastSceneEnd() + 4, ...globalCaptionDesign() }));
+document.querySelector('#addSceneAfterBtn').addEventListener('click', () => {
+  const afterId = selectedSceneId || sceneRows().at(-1)?.dataset.sceneId || '';
+  addScene(afterId ? afterSceneDefaults(afterId) : { start: lastSceneEnd(), end: lastSceneEnd() + 4, ...globalCaptionDesign() }, { afterSceneId: afterId });
+});
 document.querySelector('#addClipBtn').addEventListener('click', () => addClip());
 document.querySelector('#loadSampleBtn').addEventListener('click', loadSampleScenes);
+document.querySelector('#reflowScenesBtn').addEventListener('click', reflowSceneTimings);
 document.querySelector('#transcribeVoiceoverBtn').addEventListener('click', event => generateScenesFromVoiceover(event.target));
 document.querySelector('#refreshProjectsBtn').addEventListener('click', loadProjects);
 
+initGlobalCaptionControls();
 loadSampleScenes();
 loadProjects();

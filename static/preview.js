@@ -1,6 +1,11 @@
 const project = JSON.parse(document.querySelector('#projectData').textContent);
 const stage = document.querySelector('#previewStage');
+const screenCanvas = document.querySelector('#screenCanvas');
 const screenVideo = document.querySelector('#screenVideo');
+const deviceClipVideo = document.querySelector('#deviceClipVideo');
+const fullClipVideo = document.querySelector('#fullClipVideo');
+const backgroundClipVideo = document.querySelector('#backgroundClipVideo');
+const overlayClipVideo = document.querySelector('#overlayClipVideo');
 const backgroundImage = document.querySelector('#backgroundImage');
 const logoImage = document.querySelector('#logoImage');
 const captionChip = document.querySelector('#captionChip');
@@ -30,6 +35,7 @@ const musicEnabled = document.querySelector('#musicEnabled');
 const musicVolume = document.querySelector('#musicVolume');
 const musicVolumeValue = document.querySelector('#musicVolumeValue');
 const audioStatus = document.querySelector('#audioStatus');
+const screenCtx = screenCanvas?.getContext('2d', { alpha: false });
 
 const assetUrl = (path) => path ? `/preview-assets/${path}` : '';
 const BACKGROUNDS = {
@@ -72,6 +78,7 @@ const CAPTION_STYLE_PRESETS = [
   { id: 'karaoke-card', label: 'Karaoke card', sample: 'Karaoke' },
 ];
 const scenes = Array.isArray(project.scenes) ? project.scenes : [];
+const clips = Array.isArray(project.clips) ? project.clips : [];
 const duration = Math.max(5, Number(project.durationSeconds || 30));
 const ctaStart = Math.max(0, duration - 5.6);
 const captionTimeline = scenes.map((scene) => {
@@ -233,6 +240,10 @@ function updatePreview() {
   const entry = activeSceneEntry(seconds);
   const scene = entry.scene;
   applySceneDesign(scene);
+  const activeDeviceClip = activeClip('device-screen', seconds);
+  updateDeviceClipSource(activeDeviceClip, seconds);
+  updateTimelineClips(seconds);
+  drawDeviceScreen(activeDeviceClip);
   setCaption(scene?.caption || project.title, scene, seconds, entry.words);
   setTraySelected(effectiveCaptionStyle(scene));
   setTimingBadge(entry.timingSource);
@@ -288,7 +299,101 @@ function applySceneDesign(scene) {
   const localDuration = Math.max(0.5, Number(scene.end || duration) - Number(scene.start || 0));
   const localProgress = Math.min(1, Math.max(0, (currentProjectTime() - Number(scene.start || 0)) / localDuration));
   const zoomBase = Number(scene.screenZoom || DEFAULT_SCENE.screenZoom);
-  screenVideo.style.transform = `translate3d(0, 0, 0) scale(${zoomBase})`;
+  if (screenCanvas) screenCanvas.style.transform = `translate3d(0, 0, 0) scale(${zoomBase})`;
+}
+
+function updateTimelineClips(seconds) {
+  showTimelineClip(backgroundClipVideo, activeClip('background', seconds), seconds);
+  showTimelineClip(fullClipVideo, activeClip('full-screen', seconds), seconds);
+  showTimelineClip(overlayClipVideo, activeClip('overlay', seconds), seconds);
+}
+
+function activeClip(mode, seconds) {
+  return clips.find((clip) => clip.mode === mode && clip.asset && seconds >= Number(clip.start || 0) && seconds < Number(clip.end || 0));
+}
+
+function updateDeviceClipSource(clip, seconds) {
+  if (!deviceClipVideo) return;
+  if (!clip) {
+    deviceClipVideo.pause();
+    return;
+  }
+  syncClipVideo(deviceClipVideo, clip, seconds);
+}
+
+function showTimelineClip(video, clip, seconds, options = {}) {
+  if (!video) return;
+  if (!clip) {
+    video.classList.add('hidden');
+    video.pause();
+    return;
+  }
+
+  syncClipVideo(video, clip, seconds);
+  video.classList.remove('hidden');
+  video.muted = true;
+  video.style.objectFit = options.coverScreen ? 'cover' : 'cover';
+  if (playbackState === 'playing') {
+    video.play().catch(() => {});
+  }
+}
+
+function syncClipVideo(video, clip, seconds) {
+  const src = assetUrl(clip.asset);
+  if (video.dataset.clipAsset !== clip.asset) {
+    video.dataset.clipAsset = clip.asset;
+    video.src = src;
+    video.load();
+  }
+
+  const clipStart = Number(clip.start || 0);
+  let targetTime = Math.max(0, seconds - clipStart);
+  const mediaDuration = Number(video.duration || clip.durationSeconds || 0);
+  if (mediaDuration > 0.2 && Number.isFinite(mediaDuration)) {
+    targetTime %= mediaDuration;
+  }
+
+  try {
+    if (Math.abs(Number(video.currentTime || 0) - targetTime) > 0.22 || video.paused) {
+      video.currentTime = targetTime;
+    }
+  } catch {
+    // Some browsers reject seeking until enough metadata has loaded.
+  }
+
+  video.muted = true;
+  if (playbackState === 'playing') {
+    video.play().catch(() => {});
+  }
+}
+
+function drawDeviceScreen(activeDeviceClip) {
+  if (!screenCanvas || !screenCtx) return;
+  const source = activeDeviceClip && deviceClipVideo?.readyState >= 2 ? deviceClipVideo : screenVideo;
+  if (!source || source.readyState < 2 || !source.videoWidth || !source.videoHeight) return;
+
+  const cssWidth = screenCanvas.clientWidth || 1;
+  const cssHeight = screenCanvas.clientHeight || 1;
+  const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+  const width = Math.max(2, Math.round(cssWidth * dpr));
+  const height = Math.max(2, Math.round(cssHeight * dpr));
+  if (screenCanvas.width !== width || screenCanvas.height !== height) {
+    screenCanvas.width = width;
+    screenCanvas.height = height;
+  }
+
+  screenCtx.save();
+  screenCtx.setTransform(1, 0, 0, 1, 0, 0);
+  screenCtx.fillStyle = '#f8fafc';
+  screenCtx.fillRect(0, 0, width, height);
+
+  const scale = Math.max(width / source.videoWidth, height / source.videoHeight);
+  const drawWidth = source.videoWidth * scale;
+  const drawHeight = source.videoHeight * scale;
+  const x = (width - drawWidth) / 2;
+  const y = (height - drawHeight) / 2;
+  screenCtx.drawImage(source, x, y, drawWidth, drawHeight);
+  screenCtx.restore();
 }
 
 function setTimingBadge(source) {
@@ -372,7 +477,7 @@ function clamp(value, min, max) {
 }
 
 function mediaElements() {
-  return [screenVideo, voiceoverAudio, musicAudio].filter(Boolean);
+  return [screenVideo, deviceClipVideo, backgroundClipVideo, fullClipVideo, overlayClipVideo, voiceoverAudio, musicAudio].filter(Boolean);
 }
 
 function currentProjectTime() {
@@ -464,9 +569,10 @@ async function playSyncedMedia({ fromStart = false } = {}) {
   } catch {
     // Ignore media that is not seekable yet.
   }
-  syncAudioToVideo();
-  applyAudioSettings();
   playbackState = 'playing';
+  syncAudioToVideo();
+  updateTimelineClips(pausedProjectTime);
+  applyAudioSettings();
   updatePlaybackButtons();
   const playPromises = [screenVideo, ...audibleElements()].map((media) => media.play().catch((error) => error));
   const results = await Promise.all(playPromises);
@@ -649,6 +755,10 @@ screenVideo.addEventListener('loadedmetadata', () => {
   stopPreview();
 });
 
+screenVideo.addEventListener('loadeddata', () => {
+  drawDeviceScreen(activeClip('device-screen', currentProjectTime()));
+});
+
 screenVideo.addEventListener('play', () => {
   if (animationFrame) cancelAnimationFrame(animationFrame);
   playbackState = 'playing';
@@ -665,6 +775,9 @@ screenVideo.addEventListener('pause', () => {
 screenVideo.addEventListener('seeked', () => {
   syncAudioToVideo();
   updatePreview();
+});
+deviceClipVideo?.addEventListener('loadeddata', () => {
+  drawDeviceScreen(activeClip('device-screen', currentProjectTime()));
 });
 playBtn?.addEventListener('click', () => playSyncedMedia({ fromStart: playbackState === 'stopped' }));
 pauseBtn?.addEventListener('click', pausePreview);

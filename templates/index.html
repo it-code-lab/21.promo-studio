@@ -100,9 +100,33 @@
             <span>Step 2</span>
           </div>
 
+          <section class="global-caption-panel">
+            <div>
+              <strong>Global caption style</strong>
+              <p>Applied to every scene unless a scene override is enabled.</p>
+            </div>
+            <div id="globalCaptionStyles" class="caption-style-options compact"></div>
+            <div class="global-caption-fields">
+              <label>
+                Position
+                <select id="globalCaptionPosition"></select>
+              </label>
+              <label>
+                Size
+                <select id="globalCaptionSize"></select>
+              </label>
+              <label>
+                Accent
+                <select id="globalCaptionAccent"></select>
+              </label>
+            </div>
+          </section>
+
           <div class="scene-actions">
             <button type="button" id="addSceneBtn" class="secondary">+ Add scene</button>
+            <button type="button" id="addSceneAfterBtn" class="secondary">+ Insert scene after selected</button>
             <button type="button" id="loadSampleBtn" class="secondary">Load sample scenes</button>
+            <button type="button" id="reflowScenesBtn" class="secondary">Reflow timings by order</button>
             <button type="button" id="transcribeVoiceoverBtn" class="secondary">Generate from voiceover</button>
           </div>
 
@@ -110,6 +134,7 @@
             <table id="sceneTable">
               <thead>
                 <tr>
+                  <th></th>
                   <th>Start</th>
                   <th>End</th>
                   <th>Caption</th>
@@ -134,8 +159,9 @@
             <table id="clipTable">
               <thead>
                 <tr>
-                  <th>Start</th>
-                  <th>End</th>
+                  <th></th>
+                  <th>Place after</th>
+                  <th>Duration</th>
                   <th>Mode</th>
                   <th>Clip video</th>
                   <th>Label</th>

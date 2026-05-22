@@ -169,6 +169,55 @@ def normalize_clips(clips: list[Any]) -> list[dict[str, Any]]:
     return normalized
 
 
+def bounded_duration(seconds: float, minimum: int = 5, maximum: int = 120) -> int:
+    return int(min(maximum, max(minimum, float(seconds))) + 0.999)
+
+
+def scene_end_seconds(scenes: list[Any]) -> float:
+    ends: list[float] = []
+    for scene in scenes:
+        if not isinstance(scene, dict):
+            continue
+        try:
+            ends.append(float(scene.get("end", 0) or 0))
+        except (TypeError, ValueError):
+            continue
+    return max(ends, default=0.0)
+
+
+def clip_end_seconds(clips: list[Any]) -> float:
+    ends: list[float] = []
+    for clip in clips:
+        if not isinstance(clip, dict):
+            continue
+        try:
+            ends.append(float(clip.get("end", 0) or 0))
+        except (TypeError, ValueError):
+            continue
+    return max(ends, default=0.0)
+
+
+def ensure_scene_coverage(scenes: list[dict[str, Any]], duration_seconds: int, product_name: str, cta: str) -> list[dict[str, Any]]:
+    if not scenes:
+        return scenes
+    target_end = float(duration_seconds)
+    last_end = scene_end_seconds(scenes)
+    if target_end - last_end <= 0.25:
+        return scenes
+
+    if target_end - last_end <= 2.5:
+        scenes[-1]["end"] = round(target_end, 2)
+        return scenes
+
+    scenes.append({
+        "start": round(max(0.0, last_end), 2),
+        "end": round(target_end, 2),
+        "caption": cta or product_name,
+        "narration": cta or f"Start creating with {product_name}.",
+    })
+    return scenes
+
+
 def save_upload(file_storage, destination_dir: Path, prefix: str, allowed: set[str]) -> str | None:
     if not file_storage or not file_storage.filename:
         return None
@@ -378,8 +427,8 @@ def create_project():
         cta = request.form.get("cta", "Try it free").strip() or "Try it free"
         video_format = request.form.get("format", "vertical")
         template_name = request.form.get("template", "lifestyle")
-        duration_seconds = int(float(request.form.get("durationSeconds", "30") or "30"))
-        duration_seconds = max(5, min(duration_seconds, 120))
+        requested_duration_seconds = bounded_duration(float(request.form.get("durationSeconds", "30") or "30"))
+        duration_seconds = requested_duration_seconds
 
         try:
             scenes = json.loads(request.form.get("scenes", "[]"))
@@ -410,8 +459,12 @@ def create_project():
 
         screen_filename = save_upload(screen_recording, public_dir, "screen", ALLOWED_VIDEO_EXTENSIONS)
         screen_info = probe_media_info(public_dir / screen_filename) if screen_filename else None
-        scenes = [with_scene_design(scene, index) for index, scene in enumerate(scenes)]
         voiceover_filename = save_upload(request.files.get("voiceover"), public_dir, "voiceover", ALLOWED_AUDIO_EXTENSIONS)
+        voiceover_duration = probe_media_duration(public_dir / voiceover_filename) if voiceover_filename else None
+        if voiceover_duration:
+            duration_seconds = bounded_duration(voiceover_duration)
+        scenes = ensure_scene_coverage(scenes, duration_seconds, product_name, cta)
+        scenes = [with_scene_design(scene, index) for index, scene in enumerate(scenes)]
         background_music_filename = save_upload(request.files.get("backgroundMusic"), public_dir, "background-music", ALLOWED_AUDIO_EXTENSIONS)
         logo_filename = save_upload(request.files.get("logo"), public_dir, "logo", ALLOWED_IMAGE_EXTENSIONS)
         clips: list[dict[str, Any]] = []
@@ -442,6 +495,8 @@ def create_project():
                     "asset": asset,
                     "durationSeconds": probe_media_duration(REMOTION_PUBLIC_DIR / asset),
                 })
+        duration_seconds = bounded_duration(max(duration_seconds, scene_end_seconds(scenes), clip_end_seconds(clips)))
+        scenes = ensure_scene_coverage(scenes, duration_seconds, product_name, cta)
 
         project: dict[str, Any] = {
             "id": project_id,
@@ -461,6 +516,7 @@ def create_project():
                 "screenWidth": screen_info.get("width") if screen_info else None,
                 "screenHeight": screen_info.get("height") if screen_info else None,
                 "voiceover": f"projects/{project_id}/{voiceover_filename}" if voiceover_filename else None,
+                "voiceoverDurationSeconds": voiceover_duration,
                 "backgroundMusic": f"projects/{project_id}/{background_music_filename}" if background_music_filename else None,
                 "logo": f"projects/{project_id}/{logo_filename}" if logo_filename else None,
             },
@@ -498,10 +554,9 @@ def transcribe_voiceover():
         return jsonify({"error": f"Unsupported audio file type: {secure_filename(audio.filename)}"}), 400
 
     try:
-        duration_seconds = float(request.form.get("durationSeconds", "30") or 30)
+        requested_duration_seconds = float(request.form.get("durationSeconds", "30") or 30)
     except ValueError:
-        duration_seconds = 30
-    duration_seconds = max(5, min(duration_seconds, 120))
+        requested_duration_seconds = 30
 
     temp_dir = PROJECTS_DIR / "_transcription_uploads"
     temp_dir.mkdir(parents=True, exist_ok=True)
@@ -510,8 +565,10 @@ def transcribe_voiceover():
     audio.save(temp_path)
 
     try:
+        duration_seconds = probe_media_duration(temp_path) or requested_duration_seconds
+        duration_seconds = min(120, max(5, float(duration_seconds)))
         scenes = transcribe_audio_to_scenes(temp_path, duration_seconds)
-        return jsonify({"scenes": scenes})
+        return jsonify({"scenes": scenes, "durationSeconds": round(duration_seconds, 2)})
     except RuntimeError as exc:
         return jsonify({"error": str(exc)}), 501
     except Exception as exc:

@@ -90,14 +90,19 @@
     <section id="previewStage" class="preview-stage vertical">
       <div class="scene-camera">
         <img id="backgroundImage" class="room-bg" alt="" />
+        <video id="backgroundClipVideo" class="timeline-clip background-clip hidden" muted playsinline preload="auto"></video>
         <div class="warm-overlay"></div>
         <div class="tablet-stage">
           <div class="tablet-shell">
-            <video id="screenVideo" muted playsinline></video>
+            <canvas id="screenCanvas" class="screen-canvas"></canvas>
+            <video id="screenVideo" class="screen-source" muted playsinline preload="auto"></video>
+            <video id="deviceClipVideo" class="screen-source" muted playsinline preload="auto"></video>
             <div class="tablet-glass"></div>
           </div>
         </div>
       </div>
+      <video id="fullClipVideo" class="timeline-clip full-clip hidden" muted playsinline preload="auto"></video>
+      <video id="overlayClipVideo" class="timeline-clip overlay-clip hidden" muted playsinline preload="auto"></video>
       <img id="logoImage" class="preview-logo hidden" alt="" />
       <div id="captionChip" class="caption-chip"></div>
       <div id="ctaPill" class="cta-pill hidden"></div>

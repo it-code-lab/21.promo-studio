@@ -338,10 +338,12 @@ body.preview-page {
 .room-bg {
   object-fit: cover;
   transition: opacity 260ms ease, transform 600ms ease;
+  z-index: 0;
 }
 
 .warm-overlay {
   background: linear-gradient(180deg, rgba(255,255,255,.16), rgba(255,255,255,0) 34%, rgba(81,52,24,.18));
+  z-index: 2;
 }
 
 .preview-logo {
@@ -360,6 +362,7 @@ body.preview-page {
 
 .tablet-stage {
   position: absolute;
+  z-index: 3;
   left: -7%;
   right: -7%;
   bottom: 9.2%;
@@ -390,11 +393,10 @@ body.preview-page {
   overflow: hidden;
 }
 
-.tablet-shell video {
+.screen-canvas {
   display: block;
   width: 100%;
   height: 100%;
-  object-fit: cover;
   border-radius: 26px;
   background: #f8fafc;
   transform-origin: center;
@@ -402,6 +404,58 @@ body.preview-page {
   will-change: transform;
   transform: translate3d(0, 0, 0);
   transition: transform 500ms ease;
+}
+
+.screen-source {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.timeline-clip {
+  position: absolute;
+  display: block;
+  object-fit: cover;
+  background: #020617;
+  pointer-events: none;
+}
+
+.background-clip {
+  inset: -2%;
+  width: 104%;
+  height: 104%;
+  z-index: 1;
+  filter: saturate(1.06);
+}
+
+.full-clip {
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 4;
+}
+
+.overlay-clip {
+  right: 5%;
+  bottom: 7%;
+  width: 42%;
+  aspect-ratio: 16 / 9;
+  z-index: 5;
+  border: 2px solid rgba(255,255,255,.72);
+  border-radius: 14px;
+  box-shadow: 0 18px 58px rgba(0,0,0,.34);
+}
+
+.preview-stage.landscape .overlay-clip {
+  width: 28%;
+  right: 4%;
+  bottom: 6%;
+}
+
+.preview-stage.square .overlay-clip {
+  width: 36%;
 }
 
 .tablet-shell::after {
@@ -836,7 +890,7 @@ body.preview-page {
   transform: rotateX(24deg) rotateZ(-6deg);
 }
 
-.tablet-stage[data-device="phone-modern"] .tablet-shell video,
+.tablet-stage[data-device="phone-modern"] .screen-canvas,
 .tablet-stage[data-device="phone-modern"] .tablet-glass {
   border-radius: 24px;
 }
