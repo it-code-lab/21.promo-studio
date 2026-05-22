@@ -748,6 +748,46 @@ function wireAudioControls() {
   });
 }
 
+function isEditableShortcutTarget(target) {
+  if (!target) return false;
+  const tagName = String(target.tagName || '').toLowerCase();
+  return target.isContentEditable || ['input', 'select', 'textarea'].includes(tagName);
+}
+
+function toggleCleanView(force) {
+  const shouldClean = typeof force === 'boolean' ? force : !document.body.classList.contains('clean');
+  document.body.classList.toggle('clean', shouldClean);
+  cleanBtn.textContent = shouldClean ? 'Show controls' : 'Clean view';
+}
+
+function wireKeyboardShortcuts() {
+  document.addEventListener('keydown', (event) => {
+    if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || isEditableShortcutTarget(event.target)) return;
+    const key = event.key.toLowerCase();
+
+    if (key === ' ' || key === 'k') {
+      event.preventDefault();
+      if (playbackState === 'playing') {
+        pausePreview();
+      } else {
+        playSyncedMedia({ fromStart: playbackState === 'stopped' });
+      }
+    } else if (key === 'c') {
+      event.preventDefault();
+      toggleCleanView();
+    } else if (key === 'r') {
+      event.preventDefault();
+      playSyncedMedia({ fromStart: true });
+    } else if (key === 's') {
+      event.preventDefault();
+      stopPreview();
+    } else if (key === 'escape' && document.body.classList.contains('clean')) {
+      event.preventDefault();
+      toggleCleanView(false);
+    }
+  });
+}
+
 screenVideo.addEventListener('loadedmetadata', () => {
   if (duration > screenVideo.duration && Number.isFinite(screenVideo.duration)) {
     screenVideo.loop = true;
@@ -786,8 +826,7 @@ stopBtn?.addEventListener('click', () => stopPreview());
 replayBtn.addEventListener('click', () => playSyncedMedia({ fromStart: true }));
 
 cleanBtn.addEventListener('click', () => {
-  document.body.classList.toggle('clean');
-  cleanBtn.textContent = document.body.classList.contains('clean') ? 'Show controls' : 'Clean view';
+  toggleCleanView();
 });
 
 if (!project.assets?.screen) {
@@ -797,5 +836,6 @@ if (!project.assets?.screen) {
 renderCaptionStyleTray();
 wireCaptionControls();
 wireAudioControls();
+wireKeyboardShortcuts();
 updatePlaybackButtons();
 updatePreview();

@@ -15,12 +15,12 @@
         <p>{{ project.productName }} · {{ project.format }} · {{ project.durationSeconds }}s</p>
       </div>
       <div class="toolbar-actions">
-        <button id="playBtn" type="button">Play</button>
-        <button id="pauseBtn" type="button">Pause</button>
-        <button id="resumeBtn" type="button">Resume</button>
-        <button id="stopBtn" type="button">Stop</button>
-        <button id="replayBtn" type="button">Replay</button>
-        <button id="cleanBtn" type="button">Clean view</button>
+        <button id="playBtn" type="button" title="Space or K">Play</button>
+        <button id="pauseBtn" type="button" title="Space or K">Pause</button>
+        <button id="resumeBtn" type="button" title="Space or K">Resume</button>
+        <button id="stopBtn" type="button" title="S">Stop</button>
+        <button id="replayBtn" type="button" title="R">Replay</button>
+        <button id="cleanBtn" type="button" title="C">Clean view</button>
         {% if project.outputUrl %}
           <a href="{{ project.outputUrl }}" target="_blank" class="toolbar-link">MP4</a>
         {% endif %}
