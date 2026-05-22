@@ -676,7 +676,7 @@ async function renderProjectFromPreview() {
   const previousText = renderBtn.textContent;
   renderBtn.disabled = true;
   renderBtn.textContent = 'Rendering...';
-  setRenderStatus('Rendering MP4', 'working');
+  setRenderStatus('Queued', 'working');
   try {
     const response = await fetch(`/api/projects/${encodeURIComponent(project.id)}/render`, {
       method: 'POST',
@@ -690,8 +690,10 @@ async function renderProjectFromPreview() {
     if (!response.ok) {
       throw new Error(data.error || data.details || 'Render failed.');
     }
-    if (data.outputUrl && mp4Link) {
-      mp4Link.href = data.outputUrl;
+    const finalStatus = await pollRenderStatus(project.id);
+    const outputUrl = finalStatus.outputUrl || data.outputUrl;
+    if (outputUrl && mp4Link) {
+      mp4Link.href = outputUrl;
       mp4Link.classList.remove('hidden');
     }
     setRenderStatus('MP4 ready', 'success');
@@ -701,6 +703,25 @@ async function renderProjectFromPreview() {
     renderBtn.disabled = false;
     renderBtn.textContent = previousText;
   }
+}
+
+async function pollRenderStatus(projectId) {
+  while (true) {
+    await wait(1800);
+    const response = await fetch(`/api/projects/${encodeURIComponent(projectId)}/render-status`);
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || 'Could not read render status.');
+    const render = data.render || {};
+    const progress = Number(render.progress || 0);
+    const phase = render.phase || data.status || 'rendering';
+    setRenderStatus(`${phase} ${progress ? `${progress}%` : ''}`.trim(), 'working');
+    if (data.status === 'rendered') return data;
+    if (data.status === 'failed') throw new Error(render.lastError || 'Render failed.');
+  }
+}
+
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function seekPreview(seconds) {

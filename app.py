@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
+import threading
 import time
 from datetime import datetime
 from pathlib import Path
@@ -26,6 +28,9 @@ ALLOWED_AUDIO_EXTENSIONS = {"mp3", "wav", "m4a", "aac", "ogg"}
 ALLOWED_IMAGE_EXTENSIONS = {"png", "jpg", "jpeg", "webp"}
 CLIP_MODES = {"device-screen", "full-screen", "background", "overlay"}
 MAX_PROJECT_DURATION_SECONDS = 600
+RENDER_PROGRESS_RE = re.compile(r"(Rendered|Encoded)\s+(\d+)\s*/\s*(\d+)", re.IGNORECASE)
+RENDER_PHASE_RE = re.compile(r"^(Bundling|Copying public dir|Getting composition)", re.IGNORECASE)
+RENDER_THREADS: dict[str, threading.Thread] = {}
 
 DEFAULT_SCENE_DESIGN: dict[str, Any] = {
     "background": "reading-room",
@@ -182,6 +187,146 @@ def normalize_preview_settings(settings: Any) -> dict[str, Any]:
         },
         "playbackRate": min(1.5, max(0.75, playback_rate)),
     }
+
+
+def ensure_render_state(project: dict[str, Any]) -> dict[str, Any]:
+    render = project.get("render") if isinstance(project.get("render"), dict) else {}
+    defaults = {
+        "lastStartedAt": None,
+        "lastFinishedAt": None,
+        "lastError": None,
+        "logFile": None,
+        "secondsElapsed": None,
+        "progress": 0,
+        "phase": "idle",
+        "framesDone": 0,
+        "framesTotal": None,
+    }
+    project["render"] = {**defaults, **render}
+    return project["render"]
+
+
+def render_duration_frames(project: dict[str, Any]) -> int:
+    fps = int(project.get("fps") or 30)
+    duration_seconds = float(project.get("durationSeconds") or 30)
+    playback_rate = float(project.get("previewSettings", {}).get("playbackRate") or 1)
+    playback_rate = min(1.5, max(0.75, playback_rate))
+    return max(5 * fps, min(MAX_PROJECT_DURATION_SECONDS * fps, round((duration_seconds / playback_rate) * fps)))
+
+
+def update_project_render(project_id: str, updates: dict[str, Any], status: str | None = None, output_url: str | None = None) -> None:
+    try:
+        project = read_project(project_id)
+    except FileNotFoundError:
+        return
+    render = ensure_render_state(project)
+    render.update(updates)
+    if status:
+        project["status"] = status
+    if output_url:
+        project["outputUrl"] = output_url
+    write_project(project_id, project)
+
+
+def parse_render_progress(line: str) -> dict[str, Any] | None:
+    clean = re.sub(r"\x1b\[[0-9;]*m", "", line).strip()
+    progress_match = RENDER_PROGRESS_RE.search(clean)
+    if progress_match:
+        phase = progress_match.group(1).lower()
+        done = int(progress_match.group(2))
+        total = max(1, int(progress_match.group(3)))
+        base = 10 if phase == "rendered" else 82
+        span = 72 if phase == "rendered" else 18
+        return {
+            "phase": "rendering" if phase == "rendered" else "encoding",
+            "framesDone": done,
+            "framesTotal": total,
+            "progress": min(99, round(base + span * (done / total))),
+        }
+    phase_match = RENDER_PHASE_RE.search(clean)
+    if phase_match:
+        return {"phase": phase_match.group(1).lower(), "progress": 4}
+    return None
+
+
+def run_remotion_render(project_id: str, cmd: list[str], log_path: Path, output_path: Path, started: float) -> None:
+    log_tail: list[str] = []
+    try:
+        with log_path.open("w", encoding="utf-8") as log_file:
+            log_file.write("COMMAND:\n" + " ".join(cmd) + "\n\nOUTPUT:\n")
+            log_file.flush()
+            proc = subprocess.Popen(
+                cmd,
+                cwd=str(REMOTION_DIR),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1,
+            )
+            assert proc.stdout is not None
+            for line in proc.stdout:
+                log_file.write(line)
+                log_file.flush()
+                log_tail.append(line)
+                log_tail = log_tail[-80:]
+                progress = parse_render_progress(line)
+                if progress:
+                    update_project_render(project_id, progress, status="rendering")
+            return_code = proc.wait(timeout=30)
+
+        if return_code != 0:
+            update_project_render(
+                project_id,
+                {
+                    "lastError": "".join(log_tail)[-4000:] or "Render failed.",
+                    "lastFinishedAt": datetime.now().isoformat(timespec="seconds"),
+                    "logFile": str(log_path.relative_to(BASE_DIR)),
+                    "secondsElapsed": round(time.time() - started, 1),
+                    "progress": 0,
+                    "phase": "failed",
+                },
+                status="failed",
+            )
+            return
+
+        update_project_render(
+            project_id,
+            {
+                "lastFinishedAt": datetime.now().isoformat(timespec="seconds"),
+                "logFile": str(log_path.relative_to(BASE_DIR)),
+                "secondsElapsed": round(time.time() - started, 1),
+                "progress": 100,
+                "phase": "done",
+            },
+            status="rendered",
+            output_url=f"/outputs/{project_id}.mp4",
+        )
+    except FileNotFoundError:
+        update_project_render(
+            project_id,
+            {
+                "lastError": "npx was not found. Install Node.js, then run npm install in the remotion folder.",
+                "lastFinishedAt": datetime.now().isoformat(timespec="seconds"),
+                "progress": 0,
+                "phase": "failed",
+            },
+            status="failed",
+        )
+    except Exception as exc:
+        update_project_render(
+            project_id,
+            {
+                "lastError": str(exc),
+                "lastFinishedAt": datetime.now().isoformat(timespec="seconds"),
+                "logFile": str(log_path.relative_to(BASE_DIR)),
+                "secondsElapsed": round(time.time() - started, 1),
+                "progress": 0,
+                "phase": "failed",
+            },
+            status="failed",
+        )
+    finally:
+        RENDER_THREADS.pop(project_id, None)
 
 
 def voiceover_asset_duration(assets: dict[str, Any]) -> float | None:
@@ -481,6 +626,7 @@ def list_projects():
                 "format": data.get("format"),
                 "template": data.get("template"),
                 "status": data.get("status", "draft"),
+                "render": data.get("render") if isinstance(data.get("render"), dict) else {},
                 "createdAt": data.get("createdAt"),
                 "outputUrl": data.get("outputUrl"),
             })
@@ -617,6 +763,21 @@ def get_project(project_id: str):
         return jsonify({"error": "Project not found."}), 404
 
 
+@app.get("/api/projects/<project_id>/render-status")
+def render_status(project_id: str):
+    try:
+        project = read_project(project_id)
+    except FileNotFoundError:
+        return jsonify({"error": "Project not found."}), 404
+    render = ensure_render_state(project)
+    return jsonify({
+        "id": project_id,
+        "status": project.get("status", "draft"),
+        "render": render,
+        "outputUrl": project.get("outputUrl"),
+    })
+
+
 @app.patch("/api/projects/<project_id>/preview-settings")
 def update_preview_settings(project_id: str):
     try:
@@ -708,9 +869,17 @@ def render_project(project_id: str):
             "error": "Remotion dependencies are not installed yet. Run: cd remotion && npm install"
         }), 400
 
+    if project.get("status") == "rendering" and project_id in RENDER_THREADS:
+        return jsonify({
+            "message": "Render is already running.",
+            "project": project,
+            "statusUrl": f"/api/projects/{project_id}/render-status",
+        }), 202
+
     output_path = OUTPUTS_DIR / f"{project_id}.mp4"
     props_path = PROJECTS_DIR / project_id / "remotion-props.json"
     log_path = PROJECTS_DIR / project_id / "render.log"
+    render = ensure_render_state(project)
 
     props = {
         "title": project.get("title"),
@@ -733,8 +902,17 @@ def render_project(project_id: str):
     props_path.write_text(json.dumps(props, indent=2), encoding="utf-8")
 
     project["status"] = "rendering"
-    project["render"]["lastStartedAt"] = datetime.now().isoformat(timespec="seconds")
-    project["render"]["lastError"] = None
+    render.update({
+        "lastStartedAt": datetime.now().isoformat(timespec="seconds"),
+        "lastFinishedAt": None,
+        "lastError": None,
+        "logFile": str(log_path.relative_to(BASE_DIR)),
+        "secondsElapsed": None,
+        "progress": 1,
+        "phase": "queued",
+        "framesDone": 0,
+        "framesTotal": render_duration_frames(project),
+    })
     write_project(project_id, project)
 
     npx = "npx.cmd" if os.name == "nt" else "npx"
@@ -756,45 +934,19 @@ def render_project(project_id: str):
     ]
 
     started = time.time()
-    try:
-        proc = subprocess.run(
-            cmd,
-            cwd=str(REMOTION_DIR),
-            capture_output=True,
-            text=True,
-            timeout=60 * 20,
-        )
-        log_path.write_text(
-            "COMMAND:\n" + " ".join(cmd) + "\n\nSTDOUT:\n" + proc.stdout + "\n\nSTDERR:\n" + proc.stderr,
-            encoding="utf-8",
-        )
-        if proc.returncode != 0:
-            project["status"] = "failed"
-            project["render"]["lastError"] = proc.stderr[-4000:] or proc.stdout[-4000:]
-            project["render"]["lastFinishedAt"] = datetime.now().isoformat(timespec="seconds")
-            project["render"]["logFile"] = str(log_path.relative_to(BASE_DIR))
-            write_project(project_id, project)
-            return jsonify({"error": "Render failed.", "details": project["render"]["lastError"]}), 500
-
-        project["status"] = "rendered"
-        project["outputUrl"] = f"/outputs/{project_id}.mp4"
-        project["render"]["lastFinishedAt"] = datetime.now().isoformat(timespec="seconds")
-        project["render"]["logFile"] = str(log_path.relative_to(BASE_DIR))
-        project["render"]["secondsElapsed"] = round(time.time() - started, 1)
-        write_project(project_id, project)
-        return jsonify({"project": project, "outputUrl": project["outputUrl"]})
-    except subprocess.TimeoutExpired:
-        project["status"] = "failed"
-        project["render"]["lastError"] = "Render timed out after 20 minutes."
-        project["render"]["lastFinishedAt"] = datetime.now().isoformat(timespec="seconds")
-        write_project(project_id, project)
-        return jsonify({"error": project["render"]["lastError"]}), 500
-    except FileNotFoundError:
-        project["status"] = "failed"
-        project["render"]["lastError"] = "npx was not found. Install Node.js, then run npm install in the remotion folder."
-        project["render"]["lastFinishedAt"] = datetime.now().isoformat(timespec="seconds")
-        write_project(project_id, project)
-        return jsonify({"error": project["render"]["lastError"]}), 500
+    thread = threading.Thread(
+        target=run_remotion_render,
+        args=(project_id, cmd, log_path, output_path, started),
+        daemon=True,
+        name=f"render-{project_id}",
+    )
+    RENDER_THREADS[project_id] = thread
+    thread.start()
+    return jsonify({
+        "message": "Render started.",
+        "project": project,
+        "statusUrl": f"/api/projects/{project_id}/render-status",
+    }), 202
 
 
 @app.get("/outputs/<path:filename>")

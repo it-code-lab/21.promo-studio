@@ -4,6 +4,15 @@ const projectForm = document.querySelector('#projectForm');
 const message = document.querySelector('#message');
 const projectsList = document.querySelector('#projectsList');
 const projectsSummary = document.querySelector('#projectsSummary');
+const globalBackgrounds = document.querySelector('#globalBackgrounds');
+const globalDevices = document.querySelector('#globalDevices');
+const globalAngle = document.querySelector('#globalAngle');
+const globalMotion = document.querySelector('#globalMotion');
+const globalMotionAmount = document.querySelector('#globalMotionAmount');
+const globalMotionAmountValue = document.querySelector('#globalMotionAmountValue');
+const globalTransition = document.querySelector('#globalTransition');
+const globalScreenZoom = document.querySelector('#globalScreenZoom');
+const globalScreenZoomValue = document.querySelector('#globalScreenZoomValue');
 const globalCaptionStyles = document.querySelector('#globalCaptionStyles');
 const globalCaptionPosition = document.querySelector('#globalCaptionPosition');
 const globalCaptionSize = document.querySelector('#globalCaptionSize');
@@ -128,6 +137,19 @@ function hideMessage() {
   message.textContent = '';
 }
 
+function globalVisualDesign({ fallback = false } = {}) {
+  const fallbackValue = (value, fallbackValue) => value || (fallback ? fallbackValue : '');
+  return {
+    background: fallbackValue(checkedValue(document, '.global-background', ''), DEFAULT_DESIGN.background),
+    device: fallbackValue(checkedValue(document, '.global-device', ''), DEFAULT_DESIGN.device),
+    angle: fallbackValue(globalAngle?.value || '', DEFAULT_DESIGN.angle),
+    motion: fallbackValue(globalMotion?.value || '', DEFAULT_DESIGN.motion),
+    motionAmount: Number(globalMotionAmount?.value || DEFAULT_DESIGN.motionAmount),
+    screenZoom: Number(globalScreenZoom?.value || DEFAULT_DESIGN.screenZoom),
+    transition: fallbackValue(globalTransition?.value || '', DEFAULT_DESIGN.transition),
+  };
+}
+
 function globalCaptionDesign() {
   return {
     captionStyle: checkedValue(document, '.global-caption-style', DEFAULT_DESIGN.captionStyle),
@@ -137,6 +159,33 @@ function globalCaptionDesign() {
     captionAccent: globalCaptionAccent?.value || DEFAULT_DESIGN.captionAccent,
     captionAnimationAmount: DEFAULT_DESIGN.captionAnimationAmount,
   };
+}
+
+function globalSceneDesign() {
+  return {
+    ...globalVisualDesign({ fallback: true }),
+    ...globalCaptionDesign(),
+  };
+}
+
+function initGlobalVisualControls() {
+  if (globalBackgrounds) {
+    globalBackgrounds.innerHTML = renderThumbOptions(BACKGROUND_PRESETS, '', 'global-background', 'global-background', { perScene: true });
+  }
+  if (globalDevices) {
+    globalDevices.innerHTML = renderDeviceOptions(DEVICE_PRESETS, '', 'global-device', { perScene: true });
+  }
+  if (globalAngle) globalAngle.innerHTML = renderOptions(ANGLE_PRESETS, '', { perScene: true });
+  if (globalMotion) globalMotion.innerHTML = renderOptions(MOTION_PRESETS, '', { perScene: true });
+  if (globalTransition) globalTransition.innerHTML = renderOptions(TRANSITION_PRESETS, '', { perScene: true });
+  syncGlobalRangeLabels();
+  globalMotionAmount?.addEventListener('input', syncGlobalRangeLabels);
+  globalScreenZoom?.addEventListener('input', syncGlobalRangeLabels);
+}
+
+function syncGlobalRangeLabels() {
+  if (globalMotionAmountValue) globalMotionAmountValue.textContent = `${Number(globalMotionAmount?.value || DEFAULT_DESIGN.motionAmount).toFixed(2)}×`;
+  if (globalScreenZoomValue) globalScreenZoomValue.textContent = `${Number(globalScreenZoom?.value || DEFAULT_DESIGN.screenZoom).toFixed(2)}×`;
 }
 
 function initGlobalCaptionControls() {
@@ -150,7 +199,9 @@ function initGlobalCaptionControls() {
 
 function addScene(scene = {}, options = {}) {
   const rowId = `scene-${Date.now()}-${Math.round(Math.random() * 100000)}`;
-  const design = { ...DEFAULT_DESIGN, ...scene };
+  const design = { ...DEFAULT_DESIGN, ...globalSceneDesign(), ...scene };
+  const hasVisualOverride = Boolean(scene.visualOverride);
+  const hasCaptionOverride = Boolean(scene.captionOverride);
   const tr = document.createElement('tr');
   tr.className = 'scene-main';
   tr.dataset.designRow = rowId;
@@ -176,59 +227,63 @@ function addScene(scene = {}, options = {}) {
       <details class="scene-advanced">
         <summary>Scene visual overrides</summary>
         <label class="override-toggle">
-          <input type="checkbox" class="scene-caption-override" ${scene.captionOverride ? 'checked' : ''} />
+          <input type="checkbox" class="scene-visual-override" ${hasVisualOverride ? 'checked' : ''} />
+          Override global scene look for this scene
+        </label>
+        <label class="override-toggle">
+          <input type="checkbox" class="scene-caption-override" ${hasCaptionOverride ? 'checked' : ''} />
           Override global caption style for this scene
         </label>
       <div class="scene-design-grid">
-        <div class="design-field wide">
+        <div class="design-field wide visual-override-field">
           <span>Background</span>
           <div class="thumb-options">${renderThumbOptions(BACKGROUND_PRESETS, design.background, `${rowId}-bg`, 'scene-background')}</div>
         </div>
-        <div class="design-field wide">
+        <div class="design-field wide visual-override-field">
           <span>Device</span>
           <div class="device-options">${renderDeviceOptions(DEVICE_PRESETS, design.device, `${rowId}-device`)}</div>
         </div>
-        <label class="design-field">
+        <label class="design-field visual-override-field">
           Angle
           <select class="scene-angle">${renderOptions(ANGLE_PRESETS, design.angle)}</select>
         </label>
-        <label class="design-field">
+        <label class="design-field visual-override-field">
           Animation
           <select class="scene-motion">${renderOptions(MOTION_PRESETS, design.motion)}</select>
         </label>
-        <label class="design-field zoom-field">
+        <label class="design-field zoom-field visual-override-field">
           Animation amount <strong>${Number(design.motionAmount || DEFAULT_DESIGN.motionAmount).toFixed(2)}×</strong>
           <input type="range" min="0.5" max="2.2" step="0.05" class="scene-motion-amount" value="${Number(design.motionAmount || DEFAULT_DESIGN.motionAmount)}" />
         </label>
-        <label class="design-field">
+        <label class="design-field visual-override-field">
           Transition
           <select class="scene-transition">${renderOptions(TRANSITION_PRESETS, design.transition)}</select>
         </label>
-        <label class="design-field zoom-field">
+        <label class="design-field zoom-field visual-override-field">
           Screen zoom <strong>${Number(design.screenZoom || DEFAULT_DESIGN.screenZoom).toFixed(2)}×</strong>
           <input type="range" min="1" max="1.6" step="0.01" class="scene-screen-zoom" value="${Number(design.screenZoom || DEFAULT_DESIGN.screenZoom)}" />
         </label>
-        <div class="design-field caption-style-field wide">
+        <div class="design-field caption-style-field wide caption-override-field">
           <span>Caption style</span>
           <div class="caption-style-options">${renderCaptionStyleOptions(CAPTION_STYLE_PRESETS, design.captionStyle, `${rowId}-caption`)}</div>
         </div>
-        <label class="design-field">
+        <label class="design-field caption-override-field">
           Caption position
           <select class="scene-caption-position">${renderOptions(CAPTION_POSITION_PRESETS, design.captionPosition)}</select>
         </label>
-        <label class="design-field">
+        <label class="design-field caption-override-field">
           Caption animation
           <select class="scene-caption-animation">${renderOptions(CAPTION_ANIMATION_PRESETS, design.captionAnimation)}</select>
         </label>
-        <label class="design-field">
+        <label class="design-field caption-override-field">
           Caption size
           <select class="scene-caption-size">${renderOptions(CAPTION_SIZE_PRESETS, design.captionSize)}</select>
         </label>
-        <label class="design-field">
+        <label class="design-field caption-override-field">
           Caption accent
           <select class="scene-caption-accent">${renderOptions(CAPTION_ACCENT_PRESETS, design.captionAccent)}</select>
         </label>
-        <label class="design-field zoom-field">
+        <label class="design-field zoom-field caption-override-field">
           Caption motion <strong>${Number(design.captionAnimationAmount || DEFAULT_DESIGN.captionAnimationAmount).toFixed(2)}×</strong>
           <input type="range" min="0.5" max="2.2" step="0.05" class="scene-caption-animation-amount" value="${Number(design.captionAnimationAmount || DEFAULT_DESIGN.captionAnimationAmount)}" />
         </label>
@@ -281,17 +336,28 @@ function addScene(scene = {}, options = {}) {
   designRow.querySelector('.scene-caption-animation-amount').addEventListener('input', (event) => {
     event.target.closest('.zoom-field').querySelector('strong').textContent = `${Number(event.target.value).toFixed(2)}×`;
   });
+  designRow.querySelector('.scene-visual-override').addEventListener('change', () => updateSceneOverrideState(designRow));
+  designRow.querySelector('.scene-caption-override').addEventListener('change', () => updateSceneOverrideState(designRow));
+  updateSceneOverrideState(designRow);
   insertScenePair(tr, designRow, options.afterSceneId);
   selectScene(rowId);
   refreshClipPlacementOptions();
 }
 
-function renderOptions(presets, selected) {
-  return presets.map((preset) => `<option value="${preset.id}" ${preset.id === selected ? 'selected' : ''}>${preset.label}</option>`).join('');
+function renderOptions(presets, selected, options = {}) {
+  const perScene = options.perScene ? '<option value="">Per scene</option>' : '';
+  return perScene + presets.map((preset) => `<option value="${preset.id}" ${preset.id === selected ? 'selected' : ''}>${preset.label}</option>`).join('');
 }
 
-function renderThumbOptions(presets, selected, name, className) {
-  return presets.map((preset) => `
+function renderThumbOptions(presets, selected, name, className, options = {}) {
+  const perScene = options.perScene ? `
+    <label class="thumb-option per-scene-option">
+      <input type="radio" class="${className}" name="${name}" value="" ${selected ? '' : 'checked'} />
+      <span class="per-scene-icon">Scene</span>
+      <span>Per scene</span>
+    </label>
+  ` : '';
+  return perScene + presets.map((preset) => `
     <label class="thumb-option">
       <input type="radio" class="${className}" name="${name}" value="${preset.id}" ${preset.id === selected ? 'checked' : ''} />
       <img src="${preset.thumb}" alt="" />
@@ -300,14 +366,35 @@ function renderThumbOptions(presets, selected, name, className) {
   `).join('');
 }
 
-function renderDeviceOptions(presets, selected, name) {
-  return presets.map((preset) => `
+function renderDeviceOptions(presets, selected, name, options = {}) {
+  const inputClass = name === 'global-device' ? 'global-device' : 'scene-device';
+  const perScene = options.perScene ? `
+    <label class="device-option per-scene-option">
+      <input type="radio" class="${inputClass}" name="${name}" value="" ${selected ? '' : 'checked'} />
+      <span class="device-icon per-scene-device-icon">Scene</span>
+      <span>Per scene</span>
+    </label>
+  ` : '';
+  return perScene + presets.map((preset) => `
     <label class="device-option ${preset.id}">
-      <input type="radio" class="scene-device" name="${name}" value="${preset.id}" ${preset.id === selected ? 'checked' : ''} />
+      <input type="radio" class="${inputClass}" name="${name}" value="${preset.id}" ${preset.id === selected ? 'checked' : ''} />
       <span class="device-icon"></span>
       <span>${preset.label}</span>
     </label>
   `).join('');
+}
+
+function updateSceneOverrideState(designRow) {
+  const visualOverride = designRow.querySelector('.scene-visual-override')?.checked;
+  const captionOverride = designRow.querySelector('.scene-caption-override')?.checked;
+  designRow.querySelectorAll('.visual-override-field input, .visual-override-field select').forEach((field) => {
+    field.disabled = !visualOverride;
+  });
+  designRow.querySelectorAll('.caption-override-field input, .caption-override-field select').forEach((field) => {
+    field.disabled = !captionOverride;
+  });
+  designRow.classList.toggle('visual-inherits-global', !visualOverride);
+  designRow.classList.toggle('caption-inherits-global', !captionOverride);
 }
 
 function renderCaptionStyleOptions(presets, selected, name, className = 'scene-caption-style') {
@@ -365,7 +452,7 @@ function afterSceneDefaults(rowId) {
   const next = row?.nextElementSibling?.nextElementSibling;
   const nextStart = Number(next?.querySelector?.('.scene-start')?.value || end + 4);
   const duration = Math.max(1, Math.min(4, nextStart - end || 4));
-  return { start: end, end: end + duration, caption: '', narration: '', ...globalCaptionDesign() };
+  return { start: end, end: end + duration, caption: '', narration: '', ...globalSceneDesign() };
 }
 
 function addClip(clip = {}) {
@@ -448,34 +535,38 @@ function loadSampleScenes() {
     { start: 15, end: 22, caption: 'and tap any word to\nhear it out', narration: 'Tap any word to hear it out and build confidence.', background: 'home-office', device: 'tablet-pro', angle: 'low-desk-right', motion: 'pan-left', motionAmount: 2.2, screenZoom: 1, transition: 'soft-fade', captionStyle: 'bold-bottom', captionPosition: 'bottom', captionAnimation: 'none', captionSize: 'hero', captionAccent: 'last-word', captionAnimationAmount: 1.55 },
     { start: 22, end: 26, caption: 'built from your real product', narration: 'Built from your real website or software recording.', background: 'meeting-room', device: 'browser-window', angle: 'front-center', motion: 'pan-right', motionAmount: 2.2, screenZoom: 1, transition: 'clean-cut', captionStyle: 'minimal-subtitle', captionPosition: 'bottom', captionAnimation: 'none', captionSize: 'standard', captionAccent: 'none', captionAnimationAmount: 1.2 },
     { start: 26, end: 30, caption: 'Try it free today', narration: 'Try it free today.', background: 'creator-studio', device: 'tablet-pro', angle: 'floating-hero', motion: 'cta-push', motionAmount: 2.2, screenZoom: 1, transition: 'soft-fade', captionStyle: 'device-callout', captionPosition: 'device', captionAnimation: 'none', captionSize: 'large', captionAccent: 'first-word', captionAnimationAmount: 1.8 },
-  ].forEach(addScene);
+  ].map((scene) => ({ ...scene, visualOverride: true, captionOverride: true })).forEach(addScene);
   refreshClipPlacementOptions();
 }
 
 function collectScenes() {
+  const globalVisual = globalVisualDesign();
   const globalCaption = globalCaptionDesign();
+  const visualValue = (sceneValue, globalValue) => globalValue || sceneValue;
   return [...sceneTableBody.querySelectorAll('tr.scene-main')].map(row => {
     const designRow = row.nextElementSibling;
     const words = parseWords(row.dataset.words);
+    const hasVisualOverride = designRow.querySelector('.scene-visual-override')?.checked;
     const hasCaptionOverride = designRow.querySelector('.scene-caption-override')?.checked;
     return {
       start: Number(row.querySelector('.scene-start').value || 0),
       end: Number(row.querySelector('.scene-end').value || 0),
       caption: row.querySelector('.scene-caption').value.trim(),
       narration: row.querySelector('.scene-narration').value.trim(),
-      background: checkedValue(designRow, '.scene-background', DEFAULT_DESIGN.background),
-      device: checkedValue(designRow, '.scene-device', DEFAULT_DESIGN.device),
-      angle: designRow.querySelector('.scene-angle').value,
-      motion: designRow.querySelector('.scene-motion').value,
-      motionAmount: Number(designRow.querySelector('.scene-motion-amount').value || DEFAULT_DESIGN.motionAmount),
-      screenZoom: Number(designRow.querySelector('.scene-screen-zoom').value || DEFAULT_DESIGN.screenZoom),
-      transition: designRow.querySelector('.scene-transition').value,
+      background: hasVisualOverride ? checkedValue(designRow, '.scene-background', DEFAULT_DESIGN.background) : visualValue(checkedValue(designRow, '.scene-background', DEFAULT_DESIGN.background), globalVisual.background),
+      device: hasVisualOverride ? checkedValue(designRow, '.scene-device', DEFAULT_DESIGN.device) : visualValue(checkedValue(designRow, '.scene-device', DEFAULT_DESIGN.device), globalVisual.device),
+      angle: hasVisualOverride ? designRow.querySelector('.scene-angle').value : visualValue(designRow.querySelector('.scene-angle').value, globalVisual.angle),
+      motion: hasVisualOverride ? designRow.querySelector('.scene-motion').value : visualValue(designRow.querySelector('.scene-motion').value, globalVisual.motion),
+      motionAmount: hasVisualOverride ? Number(designRow.querySelector('.scene-motion-amount').value || globalVisual.motionAmount) : globalVisual.motionAmount,
+      screenZoom: hasVisualOverride ? Number(designRow.querySelector('.scene-screen-zoom').value || globalVisual.screenZoom) : globalVisual.screenZoom,
+      transition: hasVisualOverride ? designRow.querySelector('.scene-transition').value : visualValue(designRow.querySelector('.scene-transition').value, globalVisual.transition),
       captionStyle: hasCaptionOverride ? checkedValue(designRow, '.scene-caption-style', globalCaption.captionStyle) : globalCaption.captionStyle,
       captionPosition: hasCaptionOverride ? designRow.querySelector('.scene-caption-position').value : globalCaption.captionPosition,
       captionAnimation: hasCaptionOverride ? designRow.querySelector('.scene-caption-animation').value : globalCaption.captionAnimation,
       captionSize: hasCaptionOverride ? designRow.querySelector('.scene-caption-size').value : globalCaption.captionSize,
       captionAccent: hasCaptionOverride ? designRow.querySelector('.scene-caption-accent').value : globalCaption.captionAccent,
       captionAnimationAmount: hasCaptionOverride ? Number(designRow.querySelector('.scene-caption-animation-amount').value || DEFAULT_DESIGN.captionAnimationAmount) : globalCaption.captionAnimationAmount,
+      visualOverride: Boolean(hasVisualOverride),
       captionOverride: Boolean(hasCaptionOverride),
       words,
       wordTimingSource: hasVoiceoverWordTiming(words) ? 'voiceover' : 'estimated',
@@ -613,6 +704,13 @@ async function loadProjects() {
   data.projects.forEach(project => {
     const card = document.createElement('div');
     card.className = 'project-card';
+    const renderProgress = Number(project.render?.progress || 0);
+    const statusLabel = project.status === 'rendering' && renderProgress
+      ? `rendering ${renderProgress}%`
+      : (project.status || 'draft');
+    const renderButtonLabel = project.status === 'rendering' && renderProgress
+      ? `Rendering ${renderProgress}%`
+      : 'Render MP4';
     const output = project.outputUrl
       ? `<a class="button-link secondary" href="${project.outputUrl}" target="_blank">Open MP4</a>`
       : '';
@@ -626,7 +724,7 @@ async function loadProjects() {
           <h3>${escapeHtml(project.title || project.id)}</h3>
           <p>${escapeHtml(project.productName || '')}</p>
         </div>
-        <span class="badge">${escapeHtml(project.status || 'draft')}</span>
+        <span class="badge">${escapeHtml(statusLabel)}</span>
       </div>
       <div class="project-meta">
         <span class="badge muted-badge">${escapeHtml(project.format || '')}</span>
@@ -634,7 +732,7 @@ async function loadProjects() {
       </div>
       <div class="card-actions">
         ${preview}
-        <button class="secondary render-btn" data-id="${project.id}">Render MP4</button>
+        <button class="secondary render-btn" data-id="${project.id}">${escapeHtml(renderButtonLabel)}</button>
         <button class="danger-btn delete-project-btn" data-id="${project.id}">Delete</button>
         ${output}
       </div>
@@ -671,13 +769,14 @@ function formatProjectDate(value) {
 
 async function renderProject(projectId, button) {
   button.disabled = true;
-  button.textContent = 'Rendering...';
-  showMessage('Rendering started. For MVP this runs synchronously, so keep this page open.', '');
+  button.textContent = 'Queued...';
+  showMessage('Render started in the background. You can keep working while progress updates here.', '');
   try {
     const res = await fetch(`/api/projects/${projectId}/render`, { method: 'POST' });
     const data = await res.json();
     if (!res.ok) throw new Error(data.details || data.error || 'Render failed');
-    showMessage(`Rendered successfully: ${data.outputUrl}`, 'success');
+    const finalStatus = await pollProjectRender(projectId, button);
+    showMessage(`Rendered successfully: ${finalStatus.outputUrl}`, 'success');
     await loadProjects();
   } catch (err) {
     showMessage(String(err.message || err), 'error');
@@ -685,6 +784,25 @@ async function renderProject(projectId, button) {
     button.disabled = false;
     button.textContent = 'Render MP4';
   }
+}
+
+async function pollProjectRender(projectId, button) {
+  while (true) {
+    await wait(1800);
+    const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}/render-status`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Could not read render status');
+    const progress = Number(data.render?.progress || 0);
+    const phase = data.render?.phase || data.status || 'rendering';
+    button.textContent = progress ? `${progress}%` : 'Rendering...';
+    showMessage(`Render ${phase}${progress ? ` · ${progress}%` : ''}`, '');
+    if (data.status === 'rendered') return data;
+    if (data.status === 'failed') throw new Error(data.render?.lastError || 'Render failed');
+  }
+}
+
+function wait(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 async function deleteProject(projectId, button) {
@@ -740,10 +858,10 @@ projectForm.addEventListener('submit', async (event) => {
   }
 });
 
-document.querySelector('#addSceneBtn').addEventListener('click', () => addScene({ start: lastSceneEnd(), end: lastSceneEnd() + 4, ...globalCaptionDesign() }));
+document.querySelector('#addSceneBtn').addEventListener('click', () => addScene({ start: lastSceneEnd(), end: lastSceneEnd() + 4, ...globalSceneDesign() }));
 document.querySelector('#addSceneAfterBtn').addEventListener('click', () => {
   const afterId = selectedSceneId || sceneRows().at(-1)?.dataset.sceneId || '';
-  addScene(afterId ? afterSceneDefaults(afterId) : { start: lastSceneEnd(), end: lastSceneEnd() + 4, ...globalCaptionDesign() }, { afterSceneId: afterId });
+  addScene(afterId ? afterSceneDefaults(afterId) : { start: lastSceneEnd(), end: lastSceneEnd() + 4, ...globalSceneDesign() }, { afterSceneId: afterId });
 });
 document.querySelector('#addClipBtn').addEventListener('click', () => addClip());
 document.querySelector('#loadSampleBtn').addEventListener('click', loadSampleScenes);
@@ -751,6 +869,7 @@ document.querySelector('#reflowScenesBtn').addEventListener('click', reflowScene
 document.querySelector('#transcribeVoiceoverBtn').addEventListener('click', event => generateScenesFromVoiceover(event.target));
 document.querySelector('#refreshProjectsBtn').addEventListener('click', loadProjects);
 
+initGlobalVisualControls();
 initGlobalCaptionControls();
 loadSampleScenes();
 loadProjects();

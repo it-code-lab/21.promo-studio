@@ -303,19 +303,13 @@ const LifestylePromo: React.FC<PromoProps & {screenSrc: string | null; voiceSrc:
 
   const captionFrame = Math.max(0, timelineFrame - Math.round((scene?.start || 0) * fps));
   const captionIn = spring({frame: captionFrame, fps, config: {damping: 18, stiffness: 170}});
-  const transitionIn = scene.transition === 'clean-cut'
-    ? 1
-    : interpolate(captionFrame, [0, 12], [0, 1], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'});
-  const transitionY = scene.transition === 'slide-up'
-    ? interpolate(transitionIn, [0, 1], [72, 0])
-    : 0;
   const sceneFrame = Math.max(0, timelineFrame - Math.round(scene.start * fps));
   const sceneFrames = Math.max(1, Math.round((scene.end - scene.start) * fps));
   const sceneProgress = Math.min(1, sceneFrame / sceneFrames);
   const camera = cameraTransform(scene.motion, sceneProgress, scene.motionAmount);
   return (
     <AbsoluteFill style={{backgroundColor: '#eee2cf', overflow: 'hidden', fontFamily: 'Inter, Arial, sans-serif'}}>
-      <AbsoluteFill style={{transform: `${camera} translateY(${transitionY}px)`, opacity: transitionIn}}>
+      <AbsoluteFill style={{transform: camera}}>
         <Img
           src={staticFile(backgroundAssets[scene.background] || backgroundAssets['reading-room'])}
           style={{

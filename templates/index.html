@@ -119,8 +119,45 @@
 
           <section class="global-caption-panel">
             <div>
+              <strong>Global scene look</strong>
+              <p>Applied to every scene unless visual overrides are enabled inside a scene.</p>
+            </div>
+            <div class="global-visual-grid">
+              <div class="design-field wide">
+                <span>Background</span>
+                <div id="globalBackgrounds" class="thumb-options compact"></div>
+              </div>
+              <div class="design-field wide">
+                <span>Device</span>
+                <div id="globalDevices" class="device-options compact"></div>
+              </div>
+              <label class="design-field">
+                Angle
+                <select id="globalAngle"></select>
+              </label>
+              <label class="design-field">
+                Animation
+                <select id="globalMotion"></select>
+              </label>
+              <label class="design-field zoom-field">
+                Animation amount <strong id="globalMotionAmountValue">2.20×</strong>
+                <input id="globalMotionAmount" type="range" min="0.5" max="2.2" step="0.05" value="2.2" />
+              </label>
+              <label class="design-field">
+                Transition
+                <select id="globalTransition"></select>
+              </label>
+              <label class="design-field zoom-field">
+                Screen zoom <strong id="globalScreenZoomValue">1.00×</strong>
+                <input id="globalScreenZoom" type="range" min="1" max="1.6" step="0.01" value="1" />
+              </label>
+            </div>
+          </section>
+
+          <section class="global-caption-panel">
+            <div>
               <strong>Global caption style</strong>
-              <p>Applied to every scene unless a scene override is enabled.</p>
+              <p>Applied to every scene unless caption overrides are enabled inside a scene.</p>
             </div>
             <div id="globalCaptionStyles" class="caption-style-options compact"></div>
             <div class="global-caption-fields">
