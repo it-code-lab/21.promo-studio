@@ -45,6 +45,7 @@ body.preview-page {
   gap: 8px;
   flex-wrap: wrap;
   justify-content: flex-end;
+  align-items: center;
 }
 
 .toolbar-link,
@@ -64,6 +65,30 @@ body.preview-page {
   min-height: 40px;
   padding: 0 13px;
   text-decoration: none;
+}
+
+.preview-toolbar button:disabled {
+  cursor: wait;
+  opacity: .62;
+}
+
+.render-status {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  min-width: 72px;
+}
+
+.render-status[data-tone="working"] {
+  color: #7dd3fc;
+}
+
+.render-status[data-tone="success"] {
+  color: #5eead4;
+}
+
+.render-status[data-tone="error"] {
+  color: #fda4af;
 }
 
 .caption-style-tray {

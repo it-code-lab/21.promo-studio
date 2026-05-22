@@ -52,6 +52,8 @@ CAPTION_STYLE_PRESETS = [
     "kinetic-stack",
     "minimal-subtitle",
     "device-callout",
+    "creator-pop",
+    "karaoke-card",
 ]
 
 BACKGROUND_PRESETS = [
@@ -134,7 +136,52 @@ def normalize_project(project: dict[str, Any]) -> dict[str, Any]:
         normalized["template"] = "lifestyle"
     clips = normalized.get("clips", [])
     normalized["clips"] = normalize_clips(clips) if isinstance(clips, list) else []
+    normalized["previewSettings"] = normalize_preview_settings(normalized.get("previewSettings"))
     return normalized
+
+
+def normalize_preview_settings(settings: Any) -> dict[str, Any]:
+    data = settings if isinstance(settings, dict) else {}
+    captions = data.get("captions") if isinstance(data.get("captions"), dict) else {}
+    audio = data.get("audio") if isinstance(data.get("audio"), dict) else {}
+    try:
+        words_per_group = int(float(captions.get("wordsPerGroup", 3)))
+    except (TypeError, ValueError):
+        words_per_group = 3
+    try:
+        playback_rate = float(data.get("playbackRate", 1))
+    except (TypeError, ValueError):
+        playback_rate = 1
+    try:
+        voiceover_volume = float(audio.get("voiceoverVolume", 0.9))
+    except (TypeError, ValueError):
+        voiceover_volume = 0.9
+    try:
+        music_volume = float(audio.get("musicVolume", 0.18))
+    except (TypeError, ValueError):
+        music_volume = 0.18
+
+    style = str(captions.get("style") or "")
+    position = str(captions.get("position") or "")
+    size = str(captions.get("size") or "")
+    highlight_mode = str(captions.get("highlightMode") or "word")
+
+    return {
+        "captions": {
+            "style": style if style in CAPTION_STYLE_PRESETS else "",
+            "position": position if position in {"", "auto", "top", "center", "bottom", "device"} else "",
+            "wordsPerGroup": min(8, max(1, words_per_group)),
+            "highlightMode": highlight_mode if highlight_mode in {"word", "trail", "pulse", "none"} else "word",
+            "size": size if size in {"", "compact", "standard", "large", "hero"} else "",
+        },
+        "audio": {
+            "voiceoverEnabled": bool(audio.get("voiceoverEnabled", True)),
+            "voiceoverVolume": min(1, max(0, voiceover_volume)),
+            "musicEnabled": bool(audio.get("musicEnabled", True)),
+            "musicVolume": min(1, max(0, music_volume)),
+        },
+        "playbackRate": min(1.5, max(0.75, playback_rate)),
+    }
 
 
 def voiceover_asset_duration(assets: dict[str, Any]) -> float | None:
@@ -546,6 +593,7 @@ def create_project():
             },
             "scenes": scenes,
             "clips": normalize_clips(clips),
+            "previewSettings": normalize_preview_settings(None),
             "render": {
                 "lastStartedAt": None,
                 "lastFinishedAt": None,
@@ -567,6 +615,19 @@ def get_project(project_id: str):
         return jsonify({"project": read_project(project_id)})
     except FileNotFoundError:
         return jsonify({"error": "Project not found."}), 404
+
+
+@app.patch("/api/projects/<project_id>/preview-settings")
+def update_preview_settings(project_id: str):
+    try:
+        project = read_project(project_id)
+    except FileNotFoundError:
+        return jsonify({"error": "Project not found."}), 404
+
+    payload = request.get_json(silent=True) or {}
+    project["previewSettings"] = normalize_preview_settings(payload.get("previewSettings", payload))
+    write_project(project_id, project)
+    return jsonify({"previewSettings": project["previewSettings"]})
 
 
 @app.post("/api/transcribe")
@@ -637,6 +698,11 @@ def render_project(project_id: str):
     except FileNotFoundError:
         return jsonify({"error": "Project not found."}), 404
 
+    payload = request.get_json(silent=True) or {}
+    if isinstance(payload.get("previewSettings"), dict):
+        project["previewSettings"] = normalize_preview_settings(payload.get("previewSettings"))
+        write_project(project_id, project)
+
     if not (REMOTION_DIR / "node_modules").exists():
         return jsonify({
             "error": "Remotion dependencies are not installed yet. Run: cd remotion && npm install"
@@ -662,6 +728,7 @@ def render_project(project_id: str):
         "logoAsset": project.get("assets", {}).get("logo"),
         "scenes": project.get("scenes", []),
         "clips": project.get("clips", []),
+        "previewSettings": project.get("previewSettings"),
     }
     props_path.write_text(json.dumps(props, indent=2), encoding="utf-8")
 

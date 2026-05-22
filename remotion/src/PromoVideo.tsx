@@ -19,6 +19,8 @@ type Scene = {
   end: number;
   caption: string;
   narration?: string;
+  words?: CaptionWord[];
+  wordTimingSource?: 'voiceover' | 'estimated';
   background?:
     | 'reading-room'
     | 'office-desk'
@@ -36,12 +38,19 @@ type Scene = {
   motionAmount?: number;
   screenZoom?: number;
   transition?: 'soft-fade' | 'clean-cut' | 'slide-up';
-  captionStyle?: 'white-chip' | 'glass-card' | 'bold-bottom' | 'editorial-card' | 'neon-ribbon' | 'kinetic-stack' | 'minimal-subtitle' | 'device-callout';
+  captionStyle?: 'white-chip' | 'glass-card' | 'bold-bottom' | 'editorial-card' | 'neon-ribbon' | 'kinetic-stack' | 'minimal-subtitle' | 'device-callout' | 'creator-pop' | 'karaoke-card';
   captionPosition?: 'auto' | 'top' | 'center' | 'bottom' | 'device';
   captionAnimation?: 'rise' | 'pop' | 'slide-mask' | 'type-on' | 'none';
   captionSize?: 'compact' | 'standard' | 'large' | 'hero';
   captionAccent?: 'none' | 'first-word' | 'last-word';
   captionAnimationAmount?: number;
+};
+
+type CaptionWord = {
+  text: string;
+  start: number;
+  end: number;
+  source?: 'voiceover' | 'estimated';
 };
 
 type TimelineClip = {
@@ -69,7 +78,27 @@ export type PromoProps = {
   logoAsset?: string | null;
   scenes: Scene[];
   clips?: TimelineClip[];
+  previewSettings?: PreviewSettings;
 };
+
+type PreviewSettings = {
+  captions?: {
+    style?: Scene['captionStyle'] | '';
+    position?: Scene['captionPosition'] | '';
+    wordsPerGroup?: number;
+    highlightMode?: 'word' | 'trail' | 'pulse' | 'none';
+    size?: Scene['captionSize'] | '';
+  };
+  audio?: {
+    voiceoverEnabled?: boolean;
+    voiceoverVolume?: number;
+    musicEnabled?: boolean;
+    musicVolume?: number;
+  };
+  playbackRate?: number;
+};
+
+type CaptionHighlightMode = NonNullable<NonNullable<PreviewSettings['captions']>['highlightMode']>;
 
 export const defaultPromoProps: PromoProps = {
   title: 'Premium Promo Video Studio',
@@ -85,6 +114,11 @@ export const defaultPromoProps: PromoProps = {
   voiceoverAsset: null,
   backgroundMusicAsset: null,
   logoAsset: null,
+  previewSettings: {
+    captions: {style: '', position: '', wordsPerGroup: 3, highlightMode: 'word', size: ''},
+    audio: {voiceoverEnabled: true, voiceoverVolume: 0.9, musicEnabled: true, musicVolume: 0.18},
+    playbackRate: 1,
+  },
   clips: [],
   scenes: [
     {start: 0, end: 5, caption: 'Promote your product faster'},
@@ -98,7 +132,7 @@ function activeScene(scenes: Scene[], seconds: number): Scene | undefined {
   return scenes.find((scene) => seconds >= scene.start && seconds < scene.end) || scenes[scenes.length - 1];
 }
 
-const sceneDefaults: Required<Omit<Scene, 'caption' | 'narration'>> = {
+const sceneDefaults: Required<Omit<Scene, 'caption' | 'narration' | 'words' | 'wordTimingSource'>> = {
   start: 0,
   end: 30,
   background: 'reading-room',
@@ -141,8 +175,9 @@ const backgroundAssets = {
 export const PromoVideo: React.FC<PromoProps> = (props) => {
   const frame = useCurrentFrame();
   const {fps, width, height} = useVideoConfig();
-  const seconds = frame / fps;
-  const scene = designedScene(props.scenes, seconds);
+  const renderPlaybackRate = clampNumber(props.previewSettings?.playbackRate, 0.75, 1.5, 1);
+  const seconds = (frame / fps) * renderPlaybackRate;
+  const scene = applyPreviewCaptionSettings(designedScene(props.scenes, seconds), props.previewSettings);
   const clips = Array.isArray(props.clips) ? props.clips : [];
   const screenSrc = safeStatic(props.screenAsset);
   const voiceSrc = safeStatic(props.voiceoverAsset);
@@ -254,17 +289,19 @@ export const PromoVideo: React.FC<PromoProps> = (props) => {
 const LifestylePromo: React.FC<PromoProps & {screenSrc: string | null; voiceSrc: string | null; musicSrc: string | null; logoSrc: string | null}> = (props) => {
   const frame = useCurrentFrame();
   const {fps} = useVideoConfig();
-  const seconds = frame / fps;
-  const scene = designedScene(props.scenes, seconds);
+  const playbackRate = clampNumber(props.previewSettings?.playbackRate, 0.75, 1.5, 1);
+  const seconds = (frame / fps) * playbackRate;
+  const timelineFrame = Math.round(seconds * fps);
+  const scene = applyPreviewCaptionSettings(designedScene(props.scenes, seconds), props.previewSettings);
   const clips = Array.isArray(props.clips) ? props.clips : [];
   const isLandscape = props.format === 'landscape';
   const isSquare = props.format === 'square';
   const ctaStartSeconds = Math.max(0, props.durationSeconds - 5.6);
   const ctaVisible = seconds >= ctaStartSeconds;
-  const progress = frame / Math.max(1, props.durationSeconds * fps);
+  const progress = seconds / Math.max(1, props.durationSeconds);
   const bgScale = interpolate(progress, [0, 1], [1.02, 1.08], {extrapolateRight: 'clamp'});
 
-  const captionFrame = Math.max(0, frame - Math.round((scene?.start || 0) * fps));
+  const captionFrame = Math.max(0, timelineFrame - Math.round((scene?.start || 0) * fps));
   const captionIn = spring({frame: captionFrame, fps, config: {damping: 18, stiffness: 170}});
   const transitionIn = scene.transition === 'clean-cut'
     ? 1
@@ -272,11 +309,10 @@ const LifestylePromo: React.FC<PromoProps & {screenSrc: string | null; voiceSrc:
   const transitionY = scene.transition === 'slide-up'
     ? interpolate(transitionIn, [0, 1], [72, 0])
     : 0;
-  const sceneFrame = Math.max(0, frame - Math.round(scene.start * fps));
+  const sceneFrame = Math.max(0, timelineFrame - Math.round(scene.start * fps));
   const sceneFrames = Math.max(1, Math.round((scene.end - scene.start) * fps));
   const sceneProgress = Math.min(1, sceneFrame / sceneFrames);
   const camera = cameraTransform(scene.motion, sceneProgress, scene.motionAmount);
-
   return (
     <AbsoluteFill style={{backgroundColor: '#eee2cf', overflow: 'hidden', fontFamily: 'Inter, Arial, sans-serif'}}>
       <AbsoluteFill style={{transform: `${camera} translateY(${transitionY}px)`, opacity: transitionIn}}>
@@ -307,11 +343,12 @@ const LifestylePromo: React.FC<PromoProps & {screenSrc: string | null; voiceSrc:
           transitionOpacity={1}
           screenLoopFrames={props.screenDurationSeconds ? Math.max(2, Math.round(props.screenDurationSeconds * fps)) : undefined}
           deviceClips={clips.filter((clip) => clip.mode === 'device-screen')}
+          playbackRate={playbackRate}
         />
       </AbsoluteFill>
 
       <TimelineClips clips={clips} mode="full-screen" fit="cover" />
-      <TimelineClips clips={clips} mode="overlay" fit="cover" overlay />
+      <TimelineClips clips={clips} mode="overlay" fit="cover" overlay format={props.format} />
 
       <AbsoluteFill
         style={{
@@ -347,35 +384,41 @@ const LifestylePromo: React.FC<PromoProps & {screenSrc: string | null; voiceSrc:
           opacity: interpolate(captionIn, [0, 1], [0, 1]),
         }}
       >
-        <CaptionChip caption={scene?.caption || props.title} isLandscape={isLandscape} scene={scene} />
+        <CaptionChip
+          caption={scene?.caption || props.title}
+          isLandscape={isLandscape}
+          scene={scene}
+          seconds={seconds}
+          previewSettings={props.previewSettings}
+        />
       </div>
 
       {ctaVisible ? <LifestyleCta cta={props.cta} isLandscape={isLandscape} isSquare={isSquare} startFrame={Math.round(ctaStartSeconds * fps)} /> : null}
-      {props.voiceSrc ? <Audio src={props.voiceSrc} /> : null}
-      {props.musicSrc ? <Audio src={props.musicSrc} volume={0.18} /> : null}
+      {props.voiceSrc && props.previewSettings?.audio?.voiceoverEnabled !== false ? <Audio src={props.voiceSrc} volume={clampNumber(props.previewSettings?.audio?.voiceoverVolume, 0, 1, 0.9)} playbackRate={playbackRate} /> : null}
+      {props.musicSrc && props.previewSettings?.audio?.musicEnabled !== false ? <Audio src={props.musicSrc} volume={clampNumber(props.previewSettings?.audio?.musicVolume, 0, 1, 0.18)} playbackRate={playbackRate} /> : null}
     </AbsoluteFill>
   );
 };
 
 function captionPositionStyle(scene: Scene & typeof sceneDefaults, isLandscape: boolean, isSquare: boolean): React.CSSProperties {
   const style = scene.captionStyle;
-  const position = style === 'bold-bottom' || style === 'minimal-subtitle'
+  const position = style === 'bold-bottom' || style === 'minimal-subtitle' || style === 'creator-pop'
     ? 'bottom'
     : style === 'device-callout'
       ? 'device'
       : scene.captionPosition || 'auto';
 
   if (isLandscape) {
-    if (position === 'device') return {top: 100, left: 870, right: 110, bottom: 'auto'};
-    if (position === 'center') return {top: 300, left: 150, right: 930, bottom: 'auto'};
-    if (position === 'bottom') return {top: 'auto', bottom: 80, left: 150, right: 930};
-    return {top: 70, left: 160, right: 960, bottom: 'auto'};
+    if (position === 'device') return {top: '14%', left: '48%', right: '8%', bottom: 'auto'};
+    if (position === 'center') return {top: '50%', left: '8%', right: '54%', bottom: 'auto'};
+    if (position === 'bottom') return {top: 'auto', bottom: '10%', left: '8%', right: '54%'};
+    return {top: '7%', left: '8%', right: '58%', bottom: 'auto'};
   }
 
-  if (position === 'center') return {top: isSquare ? 420 : 620, left: 74, right: 74, bottom: 'auto'};
-  if (position === 'bottom') return {top: 'auto', bottom: isSquare ? 90 : 210, left: 74, right: 74};
-  if (position === 'device') return {top: 'auto', bottom: isSquare ? 280 : 470, left: 88, right: 88};
-  return {top: isSquare ? 70 : 84, left: 74, right: 74, bottom: 'auto'};
+  if (position === 'center') return {top: '42%', left: '7%', right: '7%', bottom: 'auto'};
+  if (position === 'bottom') return {top: 'auto', bottom: '11%', left: '7%', right: '7%'};
+  if (position === 'device') return {top: 'auto', bottom: '40%', left: '9%', right: '9%'};
+  return {top: '4.6%', left: '7%', right: '7%', bottom: 'auto'};
 }
 
 function captionJustify(scene: Scene & typeof sceneDefaults, isLandscape: boolean): React.CSSProperties['justifyContent'] {
@@ -405,19 +448,29 @@ function captionFontSize(scene: Scene & typeof sceneDefaults, isLandscape: boole
   return base;
 }
 
-function accentedText(line: string, accent: Scene['captionAccent']): React.ReactNode {
-  const words = line.split(/(\s+)/);
-  const indexes = words.map((part, index) => (/\S/.test(part) ? index : -1)).filter((index) => index >= 0);
-  const accentIndex = accent === 'first-word' ? indexes[0] : accent === 'last-word' ? indexes[indexes.length - 1] : -1;
-  return words.map((part, index) => (
-    index === accentIndex
-      ? <span key={`${part}-${index}`} style={{color: '#38bdf8'}}>{part}</span>
-      : <React.Fragment key={`${part}-${index}`}>{part}</React.Fragment>
-  ));
+function applyPreviewCaptionSettings(scene: Scene & typeof sceneDefaults, settings?: PreviewSettings): Scene & typeof sceneDefaults {
+  const captions = settings?.captions || {};
+  return {
+    ...scene,
+    captionStyle: captions.style || scene.captionStyle,
+    captionPosition: captions.position || scene.captionPosition,
+    captionSize: captions.size || scene.captionSize,
+    captionAnimation: 'none',
+  };
 }
 
-const CaptionChip: React.FC<{caption: string; isLandscape: boolean; scene: Scene & typeof sceneDefaults}> = ({caption, isLandscape, scene}) => {
-  const lines = String(caption || '').split(/\n+/).filter(Boolean);
+function clampNumber(value: unknown, min: number, max: number, fallback: number): number {
+  const numberValue = Number(value);
+  return Number.isFinite(numberValue) ? Math.min(max, Math.max(min, numberValue)) : fallback;
+}
+
+const CaptionChip: React.FC<{caption: string; isLandscape: boolean; scene: Scene & typeof sceneDefaults; seconds?: number; previewSettings?: PreviewSettings}> = ({caption, isLandscape, scene, seconds = 0, previewSettings}) => {
+  const wordsPerGroup = clampNumber(previewSettings?.captions?.wordsPerGroup, 1, 8, 3);
+  const highlightMode = previewSettings?.captions?.highlightMode || 'word';
+  const grouped = captionWordGroup(sceneCaptionWords(scene, caption), scene, seconds, wordsPerGroup);
+  const lines = grouped.words.length
+    ? splitCaptionTokens(grouped.words)
+    : String(caption || '').split(/\n+/).filter(Boolean).map((line) => line.split(/\s+/).filter(Boolean).map((word, index) => ({text: word, index, active: false, past: false, progress: 0})));
   const style = scene.captionStyle || 'white-chip';
   const isGlass = style === 'glass-card';
   const isBottom = style === 'bold-bottom';
@@ -432,20 +485,135 @@ const CaptionChip: React.FC<{caption: string; isLandscape: boolean; scene: Scene
         maxWidth: isLandscape ? 560 : 900,
       }}
     >
-      {(lines.length ? lines : [caption]).map((line, index) => (
+      {(lines.length ? lines : [[{text: caption, index: 0, active: false, past: false, progress: 0}]]).map((line, index) => (
         <div
-          key={`${line}-${index}`}
+          key={`${line.map((token) => token.text).join(' ')}-${index}`}
           style={captionLineStyle(style, index, fontSize, isLandscape)}
         >
-          {accentedText(line, scene.captionAccent)}
+          {line.map((token) => (
+            <span key={`${token.text}-${token.index}`} style={captionWordStyle(token, style, highlightMode)}>
+              {token.text}
+            </span>
+          ))}
         </div>
       ))}
     </div>
   );
 };
 
+type CaptionToken = {
+  text: string;
+  index: number;
+  active: boolean;
+  past: boolean;
+  progress: number;
+};
+
+function sceneCaptionWords(scene: Scene & typeof sceneDefaults, fallbackCaption: string): CaptionWord[] {
+  const start = Number(scene.start || 0);
+  const end = Math.max(start + 0.4, Number(scene.end || start + 3));
+  const storedWords = Array.isArray(scene.words) ? scene.words : [];
+  if (storedWords.length) {
+    return storedWords
+      .map((word) => ({
+        text: cleanCaptionWord(word.text),
+        start: Number.isFinite(Number(word.start)) ? Number(word.start) : start,
+        end: Number.isFinite(Number(word.end)) ? Number(word.end) : end,
+        source: word.source || 'voiceover',
+      }))
+      .filter((word) => word.text)
+      .map((word, index, words) => ({
+        ...word,
+        end: word.end > word.start ? word.end : (words[index + 1]?.start || end),
+      }));
+  }
+
+  const source = String(scene.narration || fallbackCaption || '').replace(/\n+/g, ' ');
+  const words = source.match(/[^\s]+/g) || [];
+  const span = (end - start) / Math.max(1, words.length);
+  return words.map((word, index) => ({
+    text: cleanCaptionWord(word),
+    start: start + index * span,
+    end: start + (index + 1) * span,
+    source: 'estimated' as const,
+  })).filter((word) => word.text);
+}
+
+function cleanCaptionWord(word: unknown): string {
+  return String(word || '').replace(/\s+/g, ' ').trim();
+}
+
+function captionWordGroup(words: CaptionWord[], scene: Scene & typeof sceneDefaults, seconds: number, wordsPerGroup: number): {words: CaptionToken[]; activeIndex: number} {
+  if (!words.length) return {words: [], activeIndex: -1};
+  const foundIndex = words.findIndex((word, index) => {
+    const nextStart = words[index + 1]?.start ?? word.end;
+    return seconds >= word.start && seconds < Math.max(word.end, nextStart);
+  });
+  const activeIndex = foundIndex === -1
+    ? (seconds < words[0].start ? 0 : words.length - 1)
+    : foundIndex;
+  const groupStart = Math.floor(activeIndex / wordsPerGroup) * wordsPerGroup;
+  return {
+    activeIndex,
+    words: words.slice(groupStart, groupStart + wordsPerGroup).map((word, offset) => {
+      const index = groupStart + offset;
+      const length = Math.max(0.08, Number(word.end || 0) - Number(word.start || 0));
+      return {
+        text: word.text,
+        index,
+        active: index === activeIndex,
+        past: index < activeIndex,
+        progress: Math.min(1, Math.max(0, (seconds - Number(word.start || scene.start || 0)) / length)),
+      };
+    }),
+  };
+}
+
+function splitCaptionTokens(words: CaptionToken[]): CaptionToken[][] {
+  if (words.length <= 4) return [words];
+  const midpoint = Math.ceil(words.length / 2);
+  return [words.slice(0, midpoint), words.slice(midpoint)];
+}
+
+function captionWordStyle(token: CaptionToken, style: NonNullable<Scene['captionStyle']>, highlightMode: CaptionHighlightMode): React.CSSProperties {
+  const base: React.CSSProperties = {
+    display: 'inline-block',
+    borderRadius: '0.18em',
+    fontStyle: 'normal',
+    transformOrigin: 'center bottom',
+    opacity: token.past ? 0.7 : 1,
+    transform: token.active ? 'translateY(-0.025em) scale(1.055)' : 'none',
+    color: 'inherit',
+  };
+  if (highlightMode === 'none') return {...base, opacity: 1, transform: 'none'};
+  if (highlightMode === 'trail' && token.past) return {...base, opacity: 1, color: '#06b6d4'};
+  if (highlightMode === 'trail' && token.active) return {...base, color: '#facc15', textShadow: '0 0 18px rgba(250,204,21,.28)'};
+  if (highlightMode === 'pulse' && token.active) return {...base, color: '#111827', background: '#facc15', boxShadow: '0 0 0 .13em rgba(250,204,21,.96), 0 12px 28px rgba(250,204,21,.24)'};
+
+  if (token.active) {
+    if (style === 'glass-card') return {...base, color: '#67e8f9', textShadow: '0 0 20px rgba(103,232,249,.3)'};
+    if (style === 'bold-bottom') return {...base, color: '#fde68a', textShadow: '0 6px 30px rgba(0,0,0,.58), 0 0 22px rgba(253,230,138,.28)'};
+    if (style === 'editorial-card') return {...base, color: '#b45309'};
+    if (style === 'neon-ribbon') return {...base, color: '#fef08a', textShadow: '0 0 22px rgba(254,240,138,.35)'};
+    if (style === 'kinetic-stack') return {...base, color: '#06b6d4'};
+    if (style === 'minimal-subtitle') return {...base, color: '#facc15'};
+    if (style === 'device-callout') return {...base, color: '#2563eb'};
+    if (style === 'creator-pop') return {...base, color: '#facc15', transform: 'translateY(-0.03em) scale(1.12)'};
+    if (style === 'karaoke-card') return {...base, color: 'white', textShadow: '0 0 20px rgba(250,204,21,.42)'};
+    return {...base, color: '#0891b2'};
+  }
+  if (style === 'karaoke-card' && token.past) return {...base, color: '#fde68a', opacity: 1};
+  return base;
+}
+
 function captionLineStyle(style: NonNullable<Scene['captionStyle']>, index: number, fontSize: number, isLandscape: boolean): React.CSSProperties {
   const base: React.CSSProperties = {
+    display: 'inline-flex',
+    alignItems: 'baseline',
+    justifyContent: 'center',
+    flexWrap: 'wrap',
+    columnGap: '0.23em',
+    rowGap: '0.08em',
     borderRadius: 10,
     padding: isLandscape ? '8px 18px 10px' : '10px 19px 12px',
     fontSize,
@@ -478,6 +646,12 @@ function captionLineStyle(style: NonNullable<Scene['captionStyle']>, index: numb
   if (style === 'device-callout') {
     return {...base, position: 'relative', borderRadius: 14, background: 'linear-gradient(135deg, rgba(255,255,255,.97), rgba(219,234,254,.94))', color: '#0f172a', boxShadow: '0 16px 40px rgba(15,23,42,.22)'};
   }
+  if (style === 'creator-pop') {
+    return {...base, background: 'transparent', color: 'white', boxShadow: 'none', fontWeight: 950, textTransform: 'uppercase', textShadow: '0 2px 0 #111827, 2px 0 0 #111827, -2px 0 0 #111827, 0 -2px 0 #111827, 0 10px 30px rgba(0,0,0,.52)'};
+  }
+  if (style === 'karaoke-card') {
+    return {...base, borderRadius: 12, background: 'linear-gradient(135deg, rgba(17,24,39,.82), rgba(49,46,129,.72))', color: 'rgba(255,255,255,.74)', border: '1px solid rgba(255,255,255,.16)', boxShadow: '0 18px 52px rgba(0,0,0,.32)'};
+  }
   return base;
 }
 
@@ -488,22 +662,16 @@ const LifestyleDeviceStage: React.FC<{
   transitionOpacity: number;
   screenLoopFrames?: number;
   deviceClips?: TimelineClip[];
-}> = ({screenSrc, format, scene, transitionOpacity, screenLoopFrames, deviceClips = []}) => {
+  playbackRate?: number;
+}> = ({screenSrc, format, scene, transitionOpacity, screenLoopFrames, deviceClips = [], playbackRate = 1}) => {
   const frame = useCurrentFrame();
   const {fps} = useVideoConfig();
   const isLandscape = format === 'landscape';
   const isSquare = format === 'square';
   const intro = spring({frame: frame - 8, fps, config: {damping: 18, stiffness: 95}});
-  const sceneFrame = Math.max(0, frame - Math.round(scene.start * fps));
-  const sceneFrames = Math.max(1, Math.round((scene.end - scene.start) * fps));
-  const sceneProgress = sceneFrame / sceneFrames;
   const pushIn = interpolate(intro, [0, 1], [0.9, 1]);
 
-  const stageStyle: React.CSSProperties = isLandscape
-    ? {position: 'absolute', right: 115, bottom: 36, width: 940, height: 660}
-    : isSquare
-      ? {position: 'absolute', left: 86, right: 86, bottom: 80, height: 690}
-      : {position: 'absolute', left: -82, right: -82, bottom: 178, height: 890};
+  const stageStyle = deviceStageStyle(format, scene.device, scene.angle);
 
   return (
     <div
@@ -520,6 +688,9 @@ const LifestyleDeviceStage: React.FC<{
       <div
         style={{
           ...deviceShellStyle(scene.device, isLandscape, isSquare),
+          position: 'relative',
+          overflow: 'hidden',
+          backfaceVisibility: 'hidden',
           boxShadow: '0 38px 82px rgba(50,31,14,.28), 0 72px 130px rgba(38,24,12,.26)',
           transform: angleTransform(scene.angle, scene.device, isLandscape, isSquare),
           transformStyle: 'preserve-3d',
@@ -541,6 +712,7 @@ const LifestyleDeviceStage: React.FC<{
             zoom={Number(scene.screenZoom || sceneDefaults.screenZoom)}
             loopFrames={screenLoopFrames}
             clips={deviceClips}
+            playbackRate={playbackRate}
           />
         </div>
         <div
@@ -627,87 +799,118 @@ const DeviceStage: React.FC<{
 function deviceShellStyle(device: NonNullable<Scene['device']>, isLandscape: boolean, isSquare: boolean): React.CSSProperties {
   if (device === 'phone-modern') {
     return {
-      width: isLandscape ? 330 : isSquare ? 320 : 420,
+      width: '38%',
       aspectRatio: '9 / 19.2',
-      padding: isLandscape ? 14 : 18,
-      borderRadius: 58,
+      padding: '2.8%',
+      borderRadius: 34,
       background: 'linear-gradient(145deg, #202020, #050505 62%, #444)',
     };
   }
   if (device === 'laptop-silver') {
     return {
-      width: isLandscape ? 820 : isSquare ? 760 : 900,
+      width: '82%',
       aspectRatio: '16 / 10',
-      padding: isLandscape ? 16 : 20,
-      borderRadius: '34px 34px 16px 16px',
+      padding: '1.7%',
+      borderRadius: '18px 18px 8px 8px',
       background: 'linear-gradient(145deg, #263241, #06080c 58%, #3a4654)',
-      boxShadow: '0 32px 70px rgba(0,0,0,0.48), inset 0 0 0 3px rgba(255,255,255,0.06)',
+      boxShadow: '0 34px 70px rgba(0,0,0,.48), inset 0 0 0 3px rgba(255,255,255,.06)',
     };
   }
   if (device === 'browser-window') {
     return {
-      width: isLandscape ? 820 : isSquare ? 760 : 900,
+      width: '84%',
       aspectRatio: '16 / 10',
-      padding: isLandscape ? '46px 16px 16px' : '56px 20px 20px',
-      borderRadius: 28,
-      background: 'linear-gradient(#111827 0 15%, #05070b 15%)',
-      boxShadow: '0 32px 70px rgba(0,0,0,0.5), inset 0 0 0 3px rgba(255,255,255,0.07)',
+      padding: '5.5% 2.1% 2.1%',
+      borderRadius: 18,
+      background: 'linear-gradient(#111827 0 13%, #05070b 13%)',
+      boxShadow: '0 34px 70px rgba(0,0,0,.5), inset 0 0 0 3px rgba(255,255,255,.07)',
     };
   }
   return {
-    width: isLandscape ? 830 : isSquare ? 760 : 920,
+    width: '86%',
     aspectRatio: '1.42 / 1',
-    padding: isLandscape ? 18 : 22,
-    borderRadius: isLandscape ? 44 : 54,
+    padding: '2.1%',
+    borderRadius: 36,
     background: 'linear-gradient(145deg, #262626, #050505 58%, #333)',
   };
 }
 
+function deviceStageStyle(format: PromoProps['format'], device: NonNullable<Scene['device']>, angle: NonNullable<Scene['angle']>): React.CSSProperties {
+  const isLandscape = format === 'landscape';
+  const isSquare = format === 'square';
+  const style: React.CSSProperties = isLandscape
+    ? {position: 'absolute', left: 'auto', right: '6%', bottom: '2%', width: '50%', height: '62%'}
+    : isSquare
+      ? {position: 'absolute', left: '-7%', right: '-7%', bottom: '7%', height: '58%'}
+      : {position: 'absolute', left: '-7%', right: '-7%', bottom: '9.2%', height: '47%'};
+
+  if (device === 'phone-modern') {
+    style.bottom = '7%';
+    style.height = '62%';
+  }
+
+  if (device === 'laptop-silver') {
+    style.bottom = '10%';
+    style.height = '42%';
+  }
+
+  if (angle === 'floating-hero') {
+    style.bottom = '18%';
+  }
+
+  return style;
+}
+
 function angleTransform(angle: NonNullable<Scene['angle']>, device: NonNullable<Scene['device']>, isLandscape: boolean, isSquare: boolean): string {
-  if (angle === 'front-center') return device === 'phone-modern' ? 'rotateX(10deg) rotateZ(0deg)' : 'rotateX(24deg) rotateZ(0deg)';
-  if (angle === 'floating-hero') return device === 'phone-modern' ? 'rotateX(5deg) rotateZ(-5deg)' : 'rotateX(8deg) rotateZ(-4deg)';
-  if (angle === 'low-desk-right') return device === 'phone-modern' ? 'rotateX(24deg) rotateZ(6deg)' : 'rotateX(54deg) rotateZ(7deg)';
+  if (angle === 'front-center') return 'rotateX(24deg) rotateZ(0deg)';
+  if (angle === 'floating-hero') return 'rotateX(8deg) rotateZ(-4deg)';
+  if (angle === 'low-desk-right') return 'rotateX(54deg) rotateZ(7deg)';
   if (device === 'phone-modern') return 'rotateX(24deg) rotateZ(-6deg)';
-  return isLandscape ? 'rotateX(58deg) rotateZ(-7deg)' : isSquare ? 'rotateX(55deg) rotateZ(-8deg)' : 'rotateX(54deg) rotateZ(-9deg)';
+  if (device === 'laptop-silver') return 'rotateX(42deg) rotateZ(-3deg)';
+  if (device === 'browser-window') return 'rotateX(18deg) rotateZ(-2deg)';
+  return 'rotateX(54deg) rotateZ(-9deg)';
 }
 
 function cameraTransform(motion: NonNullable<Scene['motion']>, progress: number, motionAmount = sceneDefaults.motionAmount): string {
   const amount = Math.min(2.2, Math.max(0.5, Number.isFinite(motionAmount) ? motionAmount : sceneDefaults.motionAmount));
   const scale = (base: number) => 1 + base * amount;
-  const px = (base: number) => base * amount;
+  const pct = (base: number) => `${Number((base * amount).toFixed(3))}%`;
   if (motion === 'screen-focus') {
-    return `scale(${interpolate(progress, [0, 1], [scale(0.02), scale(0.1)])}) translateY(${interpolate(progress, [0, 1], [0, px(-22)])}px)`;
+    return `scale(${interpolate(progress, [0, 1], [scale(0.02), scale(0.1)])}) translate3d(0%, ${pct(interpolate(progress, [0, 1], [0, -2]))}, 0)`;
   }
   if (motion === 'pan-left') {
-    return `scale(${scale(0.06)}) translate(${interpolate(progress, [0, 1], [px(24), px(-24)])}px, ${interpolate(progress, [0, 1], [0, px(-12)])}px)`;
+    return `scale(${scale(0.06)}) translate3d(${pct(interpolate(progress, [0, 1], [2.2, -2.2]))}, ${pct(interpolate(progress, [0, 1], [0, -1]))}, 0)`;
   }
   if (motion === 'pan-right') {
-    return `scale(${scale(0.06)}) translate(${interpolate(progress, [0, 1], [px(-24), px(24)])}px, ${interpolate(progress, [0, 1], [0, px(-12)])}px)`;
+    return `scale(${scale(0.06)}) translate3d(${pct(interpolate(progress, [0, 1], [-2.2, 2.2]))}, ${pct(interpolate(progress, [0, 1], [0, -1]))}, 0)`;
   }
   if (motion === 'device-tilt') {
-    return `scale(${interpolate(progress, [0, 1], [scale(0.055), scale(0.075)])}) translate(${Math.sin(progress * Math.PI * 2) * px(5)}px, ${interpolate(progress, [0, 1], [0, px(-18)])}px)`;
+    const cameraScale = interpolate(progress, [0, 0.35, 0.7, 1], [scale(0.055), scale(0.065), scale(0.06), scale(0.075)]);
+    const x = interpolate(progress, [0, 0.35, 0.7, 1], [0, 0.7, -0.4, 0.2]);
+    const y = interpolate(progress, [0, 0.35, 0.7, 1], [0, -0.7, -1.2, -1.6]);
+    return `scale(${cameraScale}) translate3d(${pct(x)}, ${pct(y)}, 0)`;
   }
   if (motion === 'cta-push') {
-    return `scale(${interpolate(progress, [0, 1], [scale(0.03), scale(0.12)])}) translateY(${interpolate(progress, [0, 1], [0, px(-28)])}px)`;
+    return `scale(${interpolate(progress, [0, 1], [scale(0.03), scale(0.12)])}) translate3d(0%, ${pct(interpolate(progress, [0, 1], [0, -2.6]))}, 0)`;
   }
-  return `scale(${interpolate(progress, [0, 1], [scale(0.01), scale(0.07)])}) translateY(${interpolate(progress, [0, 1], [0, px(-14)])}px)`;
+  return `scale(${interpolate(progress, [0, 1], [scale(0.01), scale(0.06)])}) translate3d(0%, ${pct(interpolate(progress, [0, 1], [0, -1.2]))}, 0)`;
 }
 
 function deviceInset(device: NonNullable<Scene['device']>, isLandscape: boolean): number | string {
-  if (device === 'browser-window') return isLandscape ? '46px 16px 16px' : '56px 20px 20px';
-  return isLandscape ? 18 : 22;
+  if (device === 'phone-modern') return '2.8%';
+  if (device === 'laptop-silver') return '1.7%';
+  if (device === 'browser-window') return '5.5% 2.1% 2.1%';
+  return '2.1%';
 }
 
 function deviceGlassInset(device: NonNullable<Scene['device']>, isLandscape: boolean): number | string {
-  if (device === 'browser-window') return isLandscape ? '42px 12px 12px' : '52px 16px 16px';
-  return isLandscape ? 14 : 18;
+  if (device === 'browser-window') return '5.2% 1.8% 1.8%';
+  return '2%';
 }
 
 function deviceRadius(device: NonNullable<Scene['device']>, isLandscape: boolean): number {
-  if (device === 'phone-modern') return isLandscape ? 28 : 38;
-  if (device === 'laptop-silver') return 18;
-  if (device === 'browser-window') return 18;
-  return isLandscape ? 30 : 36;
+  if (device === 'phone-modern') return 24;
+  return 26;
 }
 
 const TimelineClips: React.FC<{
@@ -717,8 +920,10 @@ const TimelineClips: React.FC<{
   radius?: number;
   zoom?: number;
   overlay?: boolean;
-}> = ({clips, mode, fit, radius = 0, zoom = 1, overlay = false}) => {
+  format?: PromoProps['format'];
+}> = ({clips, mode, fit, radius = 0, zoom = 1, overlay = false, format = 'vertical'}) => {
   const {fps} = useVideoConfig();
+  const overlayWidth = format === 'landscape' ? '28%' : format === 'square' ? '36%' : '42%';
   return (
     <>
       {clips.filter((clip) => clip.mode === mode && clip.asset).map((clip, index) => {
@@ -727,15 +932,15 @@ const TimelineClips: React.FC<{
         const style: React.CSSProperties = overlay
           ? {
               position: 'absolute',
-              right: '5%',
-              bottom: '7%',
-              width: '34%',
+              right: format === 'landscape' ? '4%' : '5%',
+              bottom: format === 'landscape' ? '6%' : '7%',
+              width: overlayWidth,
               aspectRatio: '16 / 9',
               objectFit: fit,
-              borderRadius: 8,
+              borderRadius: 14,
               zIndex: 7,
-              boxShadow: '0 24px 70px rgba(0,0,0,.42)',
-              border: '1px solid rgba(255,255,255,.28)',
+              boxShadow: '0 18px 58px rgba(0,0,0,.34)',
+              border: '2px solid rgba(255,255,255,.72)',
             }
           : {
               position: 'absolute',
@@ -757,13 +962,13 @@ const TimelineClips: React.FC<{
   );
 };
 
-const ScreenVideo: React.FC<{screenSrc: string | null; radius: number; zoom?: number; loopFrames?: number; clips?: TimelineClip[]}> = ({screenSrc, radius, zoom = 1, loopFrames, clips = []}) => {
+const ScreenVideo: React.FC<{screenSrc: string | null; radius: number; zoom?: number; loopFrames?: number; clips?: TimelineClip[]; playbackRate?: number}> = ({screenSrc, radius, zoom = 1, loopFrames, clips = [], playbackRate = 1}) => {
   const baseStyle: React.CSSProperties = {
     position: 'absolute',
     inset: 0,
     width: '100%',
     height: '100%',
-    objectFit: 'contain',
+    objectFit: 'cover',
     borderRadius: radius,
     transform: `translate3d(0, 0, 0) scale(${zoom})`,
     transformOrigin: 'center center',
@@ -779,13 +984,14 @@ const ScreenVideo: React.FC<{screenSrc: string | null; radius: number; zoom?: nu
     <Video
       src={screenSrc}
       muted
+      playbackRate={playbackRate}
       style={baseStyle}
     />
   );
   return (
     <div style={{position: 'relative', width: '100%', height: '100%', overflow: 'hidden', borderRadius: radius, background: '#f8fafc'}}>
       {loopFrames && loopFrames > 1 ? <Loop durationInFrames={loopFrames}>{video}</Loop> : video}
-      <TimelineClips clips={clips} mode="device-screen" fit="contain" radius={radius} zoom={zoom} />
+      <TimelineClips clips={clips} mode="device-screen" fit="cover" radius={radius} zoom={zoom} />
     </div>
   );
 };

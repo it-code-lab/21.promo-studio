@@ -3,6 +3,7 @@ const clipTableBody = document.querySelector('#clipTable tbody');
 const projectForm = document.querySelector('#projectForm');
 const message = document.querySelector('#message');
 const projectsList = document.querySelector('#projectsList');
+const projectsSummary = document.querySelector('#projectsSummary');
 const globalCaptionStyles = document.querySelector('#globalCaptionStyles');
 const globalCaptionPosition = document.querySelector('#globalCaptionPosition');
 const globalCaptionSize = document.querySelector('#globalCaptionSize');
@@ -603,9 +604,11 @@ async function loadProjects() {
   const res = await fetch('/api/projects');
   const data = await res.json();
   if (!data.projects?.length) {
+    updateProjectsSummary([]);
     projectsList.innerHTML = '<p>No projects yet. Create your first promo video project.</p>';
     return;
   }
+  updateProjectsSummary(data.projects);
   projectsList.innerHTML = '';
   data.projects.forEach(project => {
     const card = document.createElement('div');
@@ -614,13 +617,21 @@ async function loadProjects() {
       ? `<a class="button-link secondary" href="${project.outputUrl}" target="_blank">Open MP4</a>`
       : '';
     const preview = project.id
-      ? `<a class="button-link secondary" href="/preview/${encodeURIComponent(project.id)}" target="_blank">Preview</a>`
+      ? `<a class="button-link primary" href="/preview/${encodeURIComponent(project.id)}" target="_blank">Preview</a>`
       : '';
+    const created = formatProjectDate(project.createdAt);
     card.innerHTML = `
-      <h3>${escapeHtml(project.title || project.id)}</h3>
-      <p>${escapeHtml(project.productName || '')}</p>
-      <span class="badge">${escapeHtml(project.status || 'draft')} · ${escapeHtml(project.format || '')}</span>
-      <p>${escapeHtml(project.createdAt || '')}</p>
+      <div class="project-card-head">
+        <div>
+          <h3>${escapeHtml(project.title || project.id)}</h3>
+          <p>${escapeHtml(project.productName || '')}</p>
+        </div>
+        <span class="badge">${escapeHtml(project.status || 'draft')}</span>
+      </div>
+      <div class="project-meta">
+        <span class="badge muted-badge">${escapeHtml(project.format || '')}</span>
+        <span class="badge muted-badge">${escapeHtml(created)}</span>
+      </div>
       <div class="card-actions">
         ${preview}
         <button class="secondary render-btn" data-id="${project.id}">Render MP4</button>
@@ -637,6 +648,25 @@ async function loadProjects() {
   projectsList.querySelectorAll('.delete-project-btn').forEach(btn => {
     btn.addEventListener('click', async () => deleteProject(btn.dataset.id, btn));
   });
+}
+
+function updateProjectsSummary(projects) {
+  if (!projectsSummary) return;
+  const total = projects.length;
+  const drafts = projects.filter(project => (project.status || 'draft') === 'draft').length;
+  const rendered = projects.filter(project => project.outputUrl || project.status === 'rendered').length;
+  projectsSummary.innerHTML = `
+    <div><strong>${total}</strong><span>Total</span></div>
+    <div><strong>${drafts}</strong><span>Drafts</span></div>
+    <div><strong>${rendered}</strong><span>Rendered</span></div>
+  `;
+}
+
+function formatProjectDate(value) {
+  if (!value) return 'No date';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
 async function renderProject(projectId, button) {

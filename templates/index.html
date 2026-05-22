@@ -8,75 +8,89 @@
 </head>
 <body>
   <div class="shell">
-    <header class="hero">
-      <div>
-        <p class="eyebrow">ReaderNook Lab Prototype</p>
-        <h1>Premium Promo Video Studio</h1>
-        <p class="subtitle">Turn your Screenity or OBS recording into a polished Creatify-style website/software ad.</p>
+    <header class="studio-header">
+      <div class="brand-mark">PS</div>
+      <div class="studio-title">
+        <p class="eyebrow">Promo Studio</p>
+        <h1>Advertisement Video Studio</h1>
+        <p class="subtitle">Create polished product videos from screen recordings, voiceover, captions, and scene direction.</p>
       </div>
-      <div class="hero-card">
-        <span class="dot"></span>
-        <strong>MVP Flow</strong>
-        <p>Upload recording → add caption beats → render Remotion MP4</p>
+      <div class="studio-status">
+        <span><i></i> Local preview</span>
+        <span>Remotion ready</span>
       </div>
     </header>
 
     <main class="grid">
       <section class="panel">
         <div class="panel-title">
-          <h2>Create Project</h2>
-          <span>Step 1</span>
+          <div>
+            <span class="section-kicker">Step 1</span>
+            <h2>Project setup</h2>
+          </div>
+          <span>Draft</span>
         </div>
 
         <form id="projectForm">
-          <div class="two-col">
+          <section class="form-card">
+            <div class="form-card-head">
+              <h3>Identity</h3>
+              <span>Project basics</span>
+            </div>
+            <div class="two-col">
+              <label>
+                Project title
+                <input name="title" value="ReadBright Promo" required />
+              </label>
+              <label>
+                Product name
+                <input name="productName" value="ReadBright" required />
+              </label>
+            </div>
+
             <label>
-              Project title
-              <input name="title" value="ReadBright Promo" required />
+              Website / product URL
+              <input name="targetUrl" value="https://lab.readernook.com/" />
             </label>
-            <label>
-              Product name
-              <input name="productName" value="ReadBright" required />
-            </label>
+
+            <div class="four-col">
+              <label>
+                CTA text
+                <input name="cta" value="Try it free today" />
+              </label>
+              <label>
+                Duration seconds
+                <input name="durationSeconds" type="number" min="5" max="600" value="30" />
+              </label>
+              <label>
+                Format
+                <select name="format">
+                  <option value="vertical" selected>Vertical 9:16</option>
+                  <option value="landscape">Landscape 16:9</option>
+                  <option value="square">Square 1:1</option>
+                </select>
+              </label>
+              <label>
+                Template
+                <select name="template">
+                  <option value="lifestyle" selected>Lifestyle tablet ad</option>
+                  <option value="tablet">Gradient tablet demo</option>
+                  <option value="laptop">Laptop SaaS demo</option>
+                  <option value="phone">Phone app demo</option>
+                </select>
+              </label>
+            </div>
+          </section>
+
+          <div class="panel-title small">
+            <div>
+              <span class="section-kicker">Step 2</span>
+              <h2>Media</h2>
+            </div>
+            <span>Assets</span>
           </div>
 
-          <label>
-            Website / product URL
-            <input name="targetUrl" value="https://lab.readernook.com/" />
-          </label>
-
-          <div class="two-col">
-            <label>
-              CTA text
-              <input name="cta" value="Try it free today" />
-            </label>
-            <label>
-              Duration seconds
-              <input name="durationSeconds" type="number" min="5" max="600" value="30" />
-            </label>
-          </div>
-
-          <div class="two-col">
-            <label>
-              Format
-              <select name="format">
-                <option value="vertical" selected>Vertical 9:16 - Shorts/Reels</option>
-                <option value="landscape">Landscape 16:9 - YouTube</option>
-                <option value="square">Square 1:1 - Social</option>
-              </select>
-            </label>
-            <label>
-              Template
-              <select name="template">
-                <option value="lifestyle" selected>Lifestyle tablet ad</option>
-                <option value="tablet">Gradient tablet demo</option>
-                <option value="laptop">Laptop SaaS demo</option>
-                <option value="phone">Phone app demo</option>
-              </select>
-            </label>
-          </div>
-
-          <div class="upload-row">
+          <section class="upload-row">
             <label class="upload-box">
               <span>Screen recording video</span>
               <input name="screenRecording" type="file" accept="video/mp4,video/webm,video/quicktime,video/x-matroska" required />
@@ -93,11 +107,14 @@
               <span>Optional logo</span>
               <input name="logo" type="file" accept="image/*" />
             </label>
-          </div>
+          </section>
 
           <div class="panel-title small">
-            <h2>Scene captions</h2>
-            <span>Step 2</span>
+            <div>
+              <span class="section-kicker">Step 3</span>
+              <h2>Captions and scenes</h2>
+            </div>
+            <span>Timeline</span>
           </div>
 
           <section class="global-caption-panel">
@@ -147,7 +164,10 @@
           </div>
 
           <div class="panel-title small">
-            <h2>Timeline clips</h2>
+            <div>
+              <span class="section-kicker">Step 4</span>
+              <h2>Timeline clips</h2>
+            </div>
             <span>Optional</span>
           </div>
 
@@ -172,7 +192,13 @@
             </table>
           </div>
 
-          <button class="primary" type="submit">Save Project</button>
+          <div class="save-bar">
+            <div>
+              <strong>Ready for preview</strong>
+              <span>Save the project to open the preview studio.</span>
+            </div>
+            <button class="primary" type="submit">Save Project</button>
+          </div>
         </form>
 
         <div id="message" class="message hidden"></div>
@@ -180,8 +206,16 @@
 
       <aside class="panel side-panel">
         <div class="panel-title">
-          <h2>Projects</h2>
+          <div>
+            <span class="section-kicker">Workspace</span>
+            <h2>Projects</h2>
+          </div>
           <button id="refreshProjectsBtn" class="secondary small-btn">Refresh</button>
+        </div>
+        <div id="projectsSummary" class="projects-summary">
+          <div><strong>0</strong><span>Total</span></div>
+          <div><strong>0</strong><span>Drafts</span></div>
+          <div><strong>0</strong><span>Rendered</span></div>
         </div>
         <div id="projectsList" class="projects-list"></div>
       </aside>

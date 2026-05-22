@@ -21,9 +21,9 @@
         <button id="stopBtn" type="button" title="S">Stop</button>
         <button id="replayBtn" type="button" title="R">Replay</button>
         <button id="cleanBtn" type="button" title="C">Clean view</button>
-        {% if project.outputUrl %}
-          <a href="{{ project.outputUrl }}" target="_blank" class="toolbar-link">MP4</a>
-        {% endif %}
+        <button id="renderBtn" type="button">Render MP4</button>
+        <a id="mp4Link" href="{{ project.outputUrl or '#' }}" target="_blank" class="toolbar-link{% if not project.outputUrl %} hidden{% endif %}">MP4</a>
+        <span id="renderStatus" class="render-status" aria-live="polite"></span>
       </div>
     </section>
     <section id="captionStyleTray" class="caption-style-tray" aria-label="Caption style preview picker"></section>

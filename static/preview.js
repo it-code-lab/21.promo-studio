@@ -16,6 +16,9 @@ const resumeBtn = document.querySelector('#resumeBtn');
 const stopBtn = document.querySelector('#stopBtn');
 const replayBtn = document.querySelector('#replayBtn');
 const cleanBtn = document.querySelector('#cleanBtn');
+const renderBtn = document.querySelector('#renderBtn');
+const mp4Link = document.querySelector('#mp4Link');
+const renderStatus = document.querySelector('#renderStatus');
 const sceneCamera = document.querySelector('.scene-camera');
 const tabletStage = document.querySelector('.tablet-stage');
 const captionStyleTray = document.querySelector('#captionStyleTray');
@@ -102,9 +105,10 @@ let previewAudioSettings = loadPreviewAudioSettings();
 let playbackState = 'stopped';
 let previewStartedAt = 0;
 let pausedProjectTime = 0;
-let playbackRate = 1;
+let playbackRate = Number(project.previewSettings?.playbackRate || 1);
 let isScrubbing = false;
 let countdownTimer = null;
+let previewSettingsSaveTimer = null;
 
 stage.classList.remove('vertical', 'landscape', 'square');
 stage.classList.add(project.format || 'vertical');
@@ -553,15 +557,44 @@ function loadPreviewAudioSettings() {
     musicEnabled: true,
     musicVolume: 0.18,
   };
+  const projectSettings = project.previewSettings?.audio || {};
   try {
-    return { ...defaults, ...JSON.parse(localStorage.getItem(audioSettingsKey) || '{}') };
+    return { ...defaults, ...projectSettings, ...JSON.parse(localStorage.getItem(audioSettingsKey) || '{}') };
   } catch {
-    return defaults;
+    return { ...defaults, ...projectSettings };
   }
 }
 
 function savePreviewAudioSettings() {
   localStorage.setItem(audioSettingsKey, JSON.stringify(previewAudioSettings));
+  schedulePreviewSettingsSave();
+}
+
+function currentPreviewSettingsPayload() {
+  return {
+    captions: previewCaptionSettings,
+    audio: previewAudioSettings,
+    playbackRate,
+  };
+}
+
+function schedulePreviewSettingsSave() {
+  if (!project.id) return;
+  clearTimeout(previewSettingsSaveTimer);
+  previewSettingsSaveTimer = setTimeout(savePreviewSettingsToProject, 450);
+}
+
+async function savePreviewSettingsToProject() {
+  if (!project.id) return;
+  try {
+    await fetch(`/api/projects/${encodeURIComponent(project.id)}/preview-settings`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ previewSettings: currentPreviewSettingsPayload() }),
+    });
+  } catch {
+    // Keep preview controls responsive even if project settings cannot be persisted.
+  }
 }
 
 async function playSyncedMedia({ fromStart = false } = {}) {
@@ -630,6 +663,44 @@ function updatePlaybackButtons() {
   pauseBtn?.toggleAttribute('disabled', playbackState !== 'playing');
   resumeBtn?.toggleAttribute('disabled', playbackState !== 'paused');
   stopBtn?.toggleAttribute('disabled', playbackState === 'stopped');
+}
+
+function setRenderStatus(message = '', tone = '') {
+  if (!renderStatus) return;
+  renderStatus.textContent = message;
+  renderStatus.dataset.tone = tone;
+}
+
+async function renderProjectFromPreview() {
+  if (!project.id || !renderBtn) return;
+  const previousText = renderBtn.textContent;
+  renderBtn.disabled = true;
+  renderBtn.textContent = 'Rendering...';
+  setRenderStatus('Rendering MP4', 'working');
+  try {
+    const response = await fetch(`/api/projects/${encodeURIComponent(project.id)}/render`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        source: 'preview',
+        previewSettings: currentPreviewSettingsPayload(),
+      }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(data.error || data.details || 'Render failed.');
+    }
+    if (data.outputUrl && mp4Link) {
+      mp4Link.href = data.outputUrl;
+      mp4Link.classList.remove('hidden');
+    }
+    setRenderStatus('MP4 ready', 'success');
+  } catch (error) {
+    setRenderStatus(error.message || 'Render failed', 'error');
+  } finally {
+    renderBtn.disabled = false;
+    renderBtn.textContent = previousText;
+  }
 }
 
 function seekPreview(seconds) {
@@ -709,15 +780,17 @@ function loadPreviewCaptionSettings() {
     highlightMode: 'word',
     size: '',
   };
+  const projectSettings = project.previewSettings?.captions || {};
   try {
-    return { ...defaults, ...JSON.parse(localStorage.getItem(previewSettingsKey) || '{}') };
+    return { ...defaults, ...projectSettings, ...JSON.parse(localStorage.getItem(previewSettingsKey) || '{}') };
   } catch {
-    return defaults;
+    return { ...defaults, ...projectSettings };
   }
 }
 
 function savePreviewCaptionSettings() {
   localStorage.setItem(previewSettingsKey, JSON.stringify(previewCaptionSettings));
+  schedulePreviewSettingsSave();
 }
 
 function syncCaptionControls() {
@@ -819,6 +892,7 @@ function wireTransportControls() {
       isScrubbing = false;
     });
   }
+  if (previewSpeed) previewSpeed.value = String(playbackRate);
   previewSpeed?.addEventListener('change', () => {
     const current = currentProjectTime();
     playbackRate = Math.max(0.25, Number(previewSpeed.value || 1));
@@ -827,6 +901,7 @@ function wireTransportControls() {
       previewStartedAt = performance.now() - (pausedProjectTime / playbackRate) * 1000;
     }
     applyPlaybackRate();
+    schedulePreviewSettingsSave();
   });
   recordReadyBtn?.addEventListener('click', startRecordReady);
   updateTransport(0);
@@ -940,6 +1015,7 @@ pauseBtn?.addEventListener('click', pausePreview);
 resumeBtn?.addEventListener('click', () => playSyncedMedia());
 stopBtn?.addEventListener('click', () => stopPreview());
 replayBtn.addEventListener('click', () => playSyncedMedia({ fromStart: true }));
+renderBtn?.addEventListener('click', renderProjectFromPreview);
 
 cleanBtn.addEventListener('click', () => {
   toggleCleanView();
