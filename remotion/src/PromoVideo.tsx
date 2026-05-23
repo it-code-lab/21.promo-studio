@@ -129,7 +129,21 @@ export const defaultPromoProps: PromoProps = {
 };
 
 function activeScene(scenes: Scene[], seconds: number): Scene | undefined {
-  return scenes.find((scene) => seconds >= scene.start && seconds < scene.end) || scenes[scenes.length - 1];
+  const current = scenes.find((scene) => seconds >= Number(scene.start || 0) && seconds < Number(scene.end || 0));
+  if (current) return current;
+
+  const previous = scenes.reduce<Scene | undefined>((best, scene) => {
+    const end = Number(scene.end || scene.start || 0);
+    const bestEnd = best ? Number(best.end || best.start || 0) : -Infinity;
+    return seconds >= end && end >= bestEnd ? scene : best;
+  }, undefined);
+  if (previous) return previous;
+
+  return scenes.reduce<Scene | undefined>((best, scene) => {
+    const start = Number(scene.start || 0);
+    const bestStart = best ? Number(best.start || 0) : Infinity;
+    return start < bestStart ? scene : best;
+  }, undefined);
 }
 
 const sceneDefaults: Required<Omit<Scene, 'caption' | 'narration' | 'words' | 'wordTimingSource'>> = {

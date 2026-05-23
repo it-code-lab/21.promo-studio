@@ -135,13 +135,30 @@ ctaPill.textContent = project.cta || 'Try it free today';
 
 function activeSceneEntry(seconds) {
   const entry = captionTimeline.find((item) => seconds >= Number(item.scene.start || 0) && seconds < Number(item.scene.end || 0))
-    || (seconds < Number(captionTimeline[0]?.scene?.start || 0) ? captionTimeline[0] : captionTimeline[captionTimeline.length - 1])
+    || nearestPreviousSceneEntry(seconds)
+    || nearestFirstSceneEntry()
     || { scene: {}, words: [], timingSource: 'estimated' };
   return { scene: { ...DEFAULT_SCENE, ...entry.scene }, words: entry.words, timingSource: entry.timingSource };
 }
 
 function activeScene(seconds) {
   return activeSceneEntry(seconds).scene;
+}
+
+function nearestPreviousSceneEntry(seconds) {
+  return captionTimeline.reduce((best, item) => {
+    const end = Number(item.scene.end || item.scene.start || 0);
+    const bestEnd = best ? Number(best.scene.end || best.scene.start || 0) : -Infinity;
+    return seconds >= end && end >= bestEnd ? item : best;
+  }, null);
+}
+
+function nearestFirstSceneEntry() {
+  return captionTimeline.reduce((best, item) => {
+    const start = Number(item.scene.start || 0);
+    const bestStart = best ? Number(best.scene.start || 0) : Infinity;
+    return start < bestStart ? item : best;
+  }, null);
 }
 
 function sceneWords(scene) {
