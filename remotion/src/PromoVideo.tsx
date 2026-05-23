@@ -6,7 +6,6 @@ import {
   Loop,
   OffthreadVideo,
   Sequence,
-  Video,
   interpolate,
   spring,
   staticFile,
@@ -962,7 +961,7 @@ const TimelineClips: React.FC<{
             };
         return (
           <Sequence key={`${clip.asset}-${index}`} from={from} durationInFrames={duration}>
-            <Video src={staticFile(clip.asset)} muted style={style} />
+            <OffthreadVideo src={staticFile(clip.asset)} muted style={style} />
           </Sequence>
         );
       })}
@@ -988,8 +987,9 @@ const ScreenVideo: React.FC<{screenSrc: string | null; radius: number; zoom?: nu
     return <div style={{position: 'relative', width: '100%', height: '100%', background: 'linear-gradient(135deg,#1e293b,#0f172a)', borderRadius: radius}} />;
   }
 
+  // OffthreadVideo extracts exact frames during render, which avoids decoder flicker on transformed device screens.
   const video = (
-    <Video
+    <OffthreadVideo
       src={screenSrc}
       muted
       playbackRate={playbackRate}

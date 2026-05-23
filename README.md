@@ -175,6 +175,8 @@ Most videos should use one consistent visual language. Use **Global scene look**
 
 Background, device, angle, animation, and transition can be left as **Per scene**. In that mode, each scene keeps its own saved setting. Choosing a specific global value applies it to every scene unless **Override global scene look for this scene** is enabled inside a scene.
 
+Studio global defaults are remembered in browser storage, so the selected scene look, caption style, and scene pacing controls survive a Studio page refresh.
+
 ### 6. Choose Global Caption Style
 
 Most videos should use one caption style throughout. Use the global caption controls for:

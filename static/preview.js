@@ -723,17 +723,84 @@ async function renderProjectFromPreview() {
 }
 
 async function pollRenderStatus(projectId) {
+  let readErrors = 0;
+  let lastProgressLabel = '';
   while (true) {
     await wait(1800);
-    const response = await fetch(`/api/projects/${encodeURIComponent(projectId)}/render-status`);
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data.error || 'Could not read render status.');
+    let data;
+    try {
+      data = await readRenderStatus(projectId);
+      readErrors = 0;
+    } catch (error) {
+      readErrors += 1;
+      const outputReady = await checkOutputAvailable(projectId);
+      if (outputReady) {
+        return { status: 'rendered', outputUrl: outputReady, render: { progress: 100, phase: 'done' } };
+      }
+      const suffix = lastProgressLabel ? ` Last known: ${lastProgressLabel}.` : '';
+      setRenderStatus(`Still checking render status...${suffix}`, 'working');
+      if (readErrors >= 12) {
+        throw new Error('Could not read render status. The render may still be running; refresh Preview or open the MP4 link after a minute.');
+      }
+      continue;
+    }
+
     const render = data.render || {};
     const progress = Number(render.progress || 0);
     const phase = render.phase || data.status || 'rendering';
-    setRenderStatus(`${phase} ${progress ? `${progress}%` : ''}`.trim(), 'working');
+    lastProgressLabel = `${phase} ${progress ? `${progress}%` : ''}`.trim();
+    setRenderStatus(lastProgressLabel, 'working');
     if (data.status === 'rendered') return data;
     if (data.status === 'failed') throw new Error(render.lastError || 'Render failed.');
+  }
+}
+
+async function hydrateRenderStatus() {
+  if (!project.id) return;
+  try {
+    const data = await readRenderStatus(project.id);
+    const render = data.render || {};
+    if (data.outputUrl && mp4Link) {
+      mp4Link.href = data.outputUrl;
+      mp4Link.classList.remove('hidden');
+    }
+    if (data.status === 'rendered') {
+      setRenderStatus('MP4 ready', 'success');
+      return;
+    }
+    if (data.status === 'failed') {
+      setRenderStatus('Render failed', 'error');
+      return;
+    }
+    if (data.status === 'rendering') {
+      const progress = Number(render.progress || 0);
+      const phase = render.phase || 'rendering';
+      setRenderStatus(`${phase} ${progress ? `${progress}%` : ''}`.trim(), 'working');
+    }
+  } catch {
+    const outputReady = await checkOutputAvailable(project.id);
+    if (outputReady && mp4Link) {
+      mp4Link.href = outputReady;
+      mp4Link.classList.remove('hidden');
+      setRenderStatus('MP4 ready', 'success');
+    }
+  }
+}
+
+async function readRenderStatus(projectId) {
+  const response = await fetch(`/api/projects/${encodeURIComponent(projectId)}/render-status`, { cache: 'no-store' });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || 'Could not read render status.');
+  return data;
+}
+
+async function checkOutputAvailable(projectId) {
+  const outputUrl = `/outputs/${encodeURIComponent(projectId)}.mp4`;
+  try {
+    const response = await fetch(outputUrl, { method: 'HEAD', cache: 'no-store' });
+    return response.ok ? outputUrl : '';
+  } catch {
+    return '';
   }
 }
 
@@ -1069,4 +1136,5 @@ wireAudioControls();
 wireTransportControls();
 wireKeyboardShortcuts();
 updatePlaybackButtons();
+hydrateRenderStatus();
 updatePreview();

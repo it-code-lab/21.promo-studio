@@ -126,6 +126,7 @@ const DEFAULT_DESIGN = {
   captionAnimationAmount: 1.4,
 };
 const DEFAULT_CLIP_DURATION = 4;
+const STUDIO_GLOBAL_SETTINGS_KEY = 'promo-studio-global-settings:v1';
 let selectedSceneId = '';
 let dragSceneId = '';
 let dragClipId = '';
@@ -171,19 +172,53 @@ function globalSceneDesign() {
   };
 }
 
+function loadStudioGlobalSettings() {
+  try {
+    const settings = JSON.parse(localStorage.getItem(STUDIO_GLOBAL_SETTINGS_KEY) || '{}');
+    return settings && typeof settings === 'object' ? settings : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveStudioGlobalSettings() {
+  const settings = {
+    visual: globalVisualDesign(),
+    caption: globalCaptionDesign(),
+    pacing: scenePacingConfig({ writeBack: false }),
+  };
+  try {
+    localStorage.setItem(STUDIO_GLOBAL_SETTINGS_KEY, JSON.stringify(settings));
+  } catch {
+    // Browser storage can be unavailable in hardened/private contexts.
+  }
+}
+
 function initGlobalVisualControls() {
+  const savedVisual = loadStudioGlobalSettings().visual || {};
   if (globalBackgrounds) {
-    globalBackgrounds.innerHTML = renderThumbOptions(BACKGROUND_PRESETS, '', 'global-background', 'global-background', { perScene: true });
+    globalBackgrounds.innerHTML = renderThumbOptions(BACKGROUND_PRESETS, savedVisual.background || '', 'global-background', 'global-background', { perScene: true });
   }
   if (globalDevices) {
-    globalDevices.innerHTML = renderDeviceOptions(DEVICE_PRESETS, '', 'global-device', { perScene: true });
+    globalDevices.innerHTML = renderDeviceOptions(DEVICE_PRESETS, savedVisual.device || '', 'global-device', { perScene: true });
   }
-  if (globalAngle) globalAngle.innerHTML = renderOptions(ANGLE_PRESETS, '', { perScene: true });
-  if (globalMotion) globalMotion.innerHTML = renderOptions(MOTION_PRESETS, '', { perScene: true });
-  if (globalTransition) globalTransition.innerHTML = renderOptions(TRANSITION_PRESETS, '', { perScene: true });
+  if (globalAngle) globalAngle.innerHTML = renderOptions(ANGLE_PRESETS, savedVisual.angle || '', { perScene: true });
+  if (globalMotion) globalMotion.innerHTML = renderOptions(MOTION_PRESETS, savedVisual.motion || '', { perScene: true });
+  if (globalTransition) globalTransition.innerHTML = renderOptions(TRANSITION_PRESETS, savedVisual.transition || '', { perScene: true });
+  if (globalMotionAmount && savedVisual.motionAmount) globalMotionAmount.value = savedVisual.motionAmount;
+  if (globalScreenZoom && savedVisual.screenZoom) globalScreenZoom.value = savedVisual.screenZoom;
   syncGlobalRangeLabels();
-  globalMotionAmount?.addEventListener('input', syncGlobalRangeLabels);
-  globalScreenZoom?.addEventListener('input', syncGlobalRangeLabels);
+  globalMotionAmount?.addEventListener('input', () => {
+    syncGlobalRangeLabels();
+    saveStudioGlobalSettings();
+  });
+  globalScreenZoom?.addEventListener('input', () => {
+    syncGlobalRangeLabels();
+    saveStudioGlobalSettings();
+  });
+  [globalBackgrounds, globalDevices, globalAngle, globalMotion, globalTransition].forEach((control) => {
+    control?.addEventListener('change', saveStudioGlobalSettings);
+  });
 }
 
 function syncGlobalRangeLabels() {
@@ -192,12 +227,16 @@ function syncGlobalRangeLabels() {
 }
 
 function initGlobalCaptionControls() {
+  const savedCaption = loadStudioGlobalSettings().caption || {};
   if (globalCaptionStyles) {
-    globalCaptionStyles.innerHTML = renderCaptionStyleOptions(CAPTION_STYLE_PRESETS, DEFAULT_DESIGN.captionStyle, 'global-caption-style', 'global-caption-style');
+    globalCaptionStyles.innerHTML = renderCaptionStyleOptions(CAPTION_STYLE_PRESETS, savedCaption.captionStyle || DEFAULT_DESIGN.captionStyle, 'global-caption-style', 'global-caption-style');
   }
-  if (globalCaptionPosition) globalCaptionPosition.innerHTML = renderOptions(CAPTION_POSITION_PRESETS, DEFAULT_DESIGN.captionPosition);
-  if (globalCaptionSize) globalCaptionSize.innerHTML = renderOptions(CAPTION_SIZE_PRESETS, DEFAULT_DESIGN.captionSize);
-  if (globalCaptionAccent) globalCaptionAccent.innerHTML = renderOptions(CAPTION_ACCENT_PRESETS, DEFAULT_DESIGN.captionAccent);
+  if (globalCaptionPosition) globalCaptionPosition.innerHTML = renderOptions(CAPTION_POSITION_PRESETS, savedCaption.captionPosition || DEFAULT_DESIGN.captionPosition);
+  if (globalCaptionSize) globalCaptionSize.innerHTML = renderOptions(CAPTION_SIZE_PRESETS, savedCaption.captionSize || DEFAULT_DESIGN.captionSize);
+  if (globalCaptionAccent) globalCaptionAccent.innerHTML = renderOptions(CAPTION_ACCENT_PRESETS, savedCaption.captionAccent || DEFAULT_DESIGN.captionAccent);
+  [globalCaptionStyles, globalCaptionPosition, globalCaptionSize, globalCaptionAccent].forEach((control) => {
+    control?.addEventListener('change', saveStudioGlobalSettings);
+  });
 }
 
 function addScene(scene = {}, options = {}) {
@@ -641,14 +680,30 @@ function reflowSceneTimings() {
   refreshClipPlacementOptions();
 }
 
-function scenePacingConfig() {
+function scenePacingConfig({ writeBack = true } = {}) {
   const minSeconds = clampNumber(Number(minSceneSecondsInput?.value || 2.5), 1, 8);
   const targetSeconds = clampNumber(Number(targetSceneSecondsInput?.value || 4.5), minSeconds, 12);
   const maxSeconds = clampNumber(Number(maxSceneSecondsInput?.value || 7), Math.max(targetSeconds, minSeconds + 0.25), 16);
-  if (minSceneSecondsInput) minSceneSecondsInput.value = minSeconds;
-  if (targetSceneSecondsInput) targetSceneSecondsInput.value = targetSeconds;
-  if (maxSceneSecondsInput) maxSceneSecondsInput.value = maxSeconds;
+  if (writeBack) {
+    if (minSceneSecondsInput) minSceneSecondsInput.value = minSeconds;
+    if (targetSceneSecondsInput) targetSceneSecondsInput.value = targetSeconds;
+    if (maxSceneSecondsInput) maxSceneSecondsInput.value = maxSeconds;
+  }
   return { minSeconds, targetSeconds, maxSeconds };
+}
+
+function initScenePacingControls() {
+  const savedPacing = loadStudioGlobalSettings().pacing || {};
+  if (minSceneSecondsInput && savedPacing.minSeconds) minSceneSecondsInput.value = savedPacing.minSeconds;
+  if (targetSceneSecondsInput && savedPacing.targetSeconds) targetSceneSecondsInput.value = savedPacing.targetSeconds;
+  if (maxSceneSecondsInput && savedPacing.maxSeconds) maxSceneSecondsInput.value = savedPacing.maxSeconds;
+  scenePacingConfig();
+  [minSceneSecondsInput, targetSceneSecondsInput, maxSceneSecondsInput].forEach((control) => {
+    control?.addEventListener('change', () => {
+      scenePacingConfig();
+      saveStudioGlobalSettings();
+    });
+  });
 }
 
 function clampNumber(value, min, max) {
@@ -983,5 +1038,6 @@ document.querySelector('#refreshProjectsBtn').addEventListener('click', loadProj
 
 initGlobalVisualControls();
 initGlobalCaptionControls();
+initScenePacingControls();
 loadSampleScenes();
 loadProjects();

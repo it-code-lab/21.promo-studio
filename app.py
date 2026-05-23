@@ -231,6 +231,25 @@ def update_project_render(project_id: str, updates: dict[str, Any], status: str 
     write_project(project_id, project)
 
 
+def reconcile_render_status(project_id: str, project: dict[str, Any]) -> dict[str, Any]:
+    render = ensure_render_state(project)
+    output_path = OUTPUTS_DIR / f"{project_id}.mp4"
+    render["active"] = bool(RENDER_THREADS.get(project_id) and RENDER_THREADS[project_id].is_alive())
+    render["outputExists"] = output_path.exists()
+    render["outputSizeBytes"] = output_path.stat().st_size if output_path.exists() else 0
+
+    if project.get("status") == "rendering" and not render["active"] and output_path.exists() and output_path.stat().st_size > 0:
+        render.update({
+            "lastFinishedAt": render.get("lastFinishedAt") or datetime.now().isoformat(timespec="seconds"),
+            "progress": 100,
+            "phase": "done",
+        })
+        project["status"] = "rendered"
+        project["outputUrl"] = f"/outputs/{project_id}.mp4"
+        write_project(project_id, project)
+    return render
+
+
 def parse_render_progress(line: str) -> dict[str, Any] | None:
     clean = re.sub(r"\x1b\[[0-9;]*m", "", line).strip()
     progress_match = RENDER_PROGRESS_RE.search(clean)
@@ -859,7 +878,7 @@ def render_status(project_id: str):
         project = read_project(project_id)
     except FileNotFoundError:
         return jsonify({"error": "Project not found."}), 404
-    render = ensure_render_state(project)
+    render = reconcile_render_status(project_id, project)
     return jsonify({
         "id": project_id,
         "status": project.get("status", "draft"),
