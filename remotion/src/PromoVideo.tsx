@@ -67,6 +67,11 @@ type ThumbnailBumper = {
   fit?: 'cover' | 'contain';
 };
 
+type LayoutSettings = {
+  deviceLift?: number;
+  ctaLift?: number;
+};
+
 export type PromoProps = {
   title: string;
   productName: string;
@@ -83,6 +88,7 @@ export type PromoProps = {
   logoAsset?: string | null;
   thumbnailAsset?: string | null;
   thumbnailBumper?: ThumbnailBumper;
+  layout?: LayoutSettings;
   scenes: Scene[];
   clips?: TimelineClip[];
   previewSettings?: PreviewSettings;
@@ -123,6 +129,7 @@ export const defaultPromoProps: PromoProps = {
   logoAsset: null,
   thumbnailAsset: null,
   thumbnailBumper: {position: 'none', durationSeconds: 0.5, fit: 'cover'},
+  layout: {deviceLift: 0, ctaLift: 0},
   previewSettings: {
     captions: {style: '', position: '', wordsPerGroup: 3, highlightMode: 'word', size: ''},
     audio: {voiceoverEnabled: true, voiceoverVolume: 0.9, musicEnabled: true, musicVolume: 0.18},
@@ -206,6 +213,19 @@ function contentSecondsFromProjectTime(projectSeconds: number, contentDurationSe
   return Math.min(contentDurationSeconds, projectSeconds);
 }
 
+function normalizeLayoutSettings(settings?: LayoutSettings): Required<LayoutSettings> {
+  return {
+    deviceLift: clampNumber(settings?.deviceLift, 0, 16, 0),
+    ctaLift: clampNumber(settings?.ctaLift, 0, 12, 0),
+  };
+}
+
+function liftBottom(bottom: React.CSSProperties['bottom'], liftPercent: number): React.CSSProperties['bottom'] {
+  if (!liftPercent || bottom === undefined || bottom === 'auto') return bottom;
+  if (typeof bottom === 'number') return `calc(${bottom}px + ${liftPercent}%)`;
+  return `calc(${bottom} + ${liftPercent}%)`;
+}
+
 const commonTextShadow = '0 8px 30px rgba(0,0,0,0.35)';
 const backgroundAssets = {
   'reading-room': 'assets/lifestyle-reading-room.png',
@@ -228,6 +248,7 @@ export const PromoVideo: React.FC<PromoProps> = (props) => {
   const thumbnailBumper = resolveThumbnailBumper(props.thumbnailBumper, thumbnailSrc);
   const projectSeconds = (frame / fps) * renderPlaybackRate;
   const seconds = contentSecondsFromProjectTime(projectSeconds, props.durationSeconds, thumbnailBumper);
+  const layout = normalizeLayoutSettings(props.layout);
   const scene = applyPreviewCaptionSettings(designedScene(props.scenes, seconds), props.previewSettings);
   const clips = Array.isArray(props.clips) ? props.clips : [];
   const screenSrc = safeStatic(props.screenAsset);
@@ -236,7 +257,7 @@ export const PromoVideo: React.FC<PromoProps> = (props) => {
   const logoSrc = safeStatic(props.logoAsset);
 
   if (props.template === 'lifestyle') {
-    return <LifestylePromo {...props} screenSrc={screenSrc} voiceSrc={voiceSrc} musicSrc={musicSrc} logoSrc={logoSrc} thumbnailSrc={thumbnailSrc} resolvedThumbnailBumper={thumbnailBumper} />;
+    return <LifestylePromo {...props} screenSrc={screenSrc} voiceSrc={voiceSrc} musicSrc={musicSrc} logoSrc={logoSrc} thumbnailSrc={thumbnailSrc} resolvedThumbnailBumper={thumbnailBumper} layoutSettings={layout} />;
   }
 
   const entrance = spring({frame, fps, config: {damping: 18, stiffness: 120}});
@@ -338,7 +359,7 @@ export const PromoVideo: React.FC<PromoProps> = (props) => {
   );
 };
 
-const LifestylePromo: React.FC<PromoProps & {screenSrc: string | null; voiceSrc: string | null; musicSrc: string | null; logoSrc: string | null; thumbnailSrc: string | null; resolvedThumbnailBumper: ResolvedThumbnailBumper | null}> = (props) => {
+const LifestylePromo: React.FC<PromoProps & {screenSrc: string | null; voiceSrc: string | null; musicSrc: string | null; logoSrc: string | null; thumbnailSrc: string | null; resolvedThumbnailBumper: ResolvedThumbnailBumper | null; layoutSettings: Required<LayoutSettings>}> = (props) => {
   const frame = useCurrentFrame();
   const {fps} = useVideoConfig();
   const playbackRate = clampNumber(props.previewSettings?.playbackRate, 0.75, 1.5, 1);
@@ -391,6 +412,7 @@ const LifestylePromo: React.FC<PromoProps & {screenSrc: string | null; voiceSrc:
           screenLoopFrames={props.screenDurationSeconds ? Math.max(2, Math.round(props.screenDurationSeconds * fps)) : undefined}
           deviceClips={clips.filter((clip) => clip.mode === 'device-screen')}
           playbackRate={playbackRate}
+          deviceLift={props.layoutSettings.deviceLift}
         />
       </AbsoluteFill>
 
@@ -440,7 +462,7 @@ const LifestylePromo: React.FC<PromoProps & {screenSrc: string | null; voiceSrc:
         />
       </div>
 
-      {ctaVisible ? <LifestyleCta cta={props.cta} isLandscape={isLandscape} isSquare={isSquare} startFrame={Math.round(ctaStartSeconds * fps)} /> : null}
+      {ctaVisible ? <LifestyleCta cta={props.cta} isLandscape={isLandscape} isSquare={isSquare} startFrame={Math.round(ctaStartSeconds * fps)} ctaLift={props.layoutSettings.ctaLift} /> : null}
       {props.voiceSrc && props.previewSettings?.audio?.voiceoverEnabled !== false ? <TimelineAudio src={props.voiceSrc} volume={clampNumber(props.previewSettings?.audio?.voiceoverVolume, 0, 1, 0.9)} playbackRate={playbackRate} contentDurationSeconds={props.durationSeconds} alignWithContent={false} /> : null}
       {props.musicSrc && props.previewSettings?.audio?.musicEnabled !== false ? <TimelineAudio src={props.musicSrc} volume={clampNumber(props.previewSettings?.audio?.musicVolume, 0, 1, 0.18)} playbackRate={playbackRate} thumbnailBumper={props.resolvedThumbnailBumper} contentDurationSeconds={props.durationSeconds} /> : null}
       <ThumbnailBumperOverlay thumbnailSrc={props.thumbnailSrc} thumbnailBumper={props.resolvedThumbnailBumper} contentDurationSeconds={props.durationSeconds} playbackRate={playbackRate} />
@@ -711,7 +733,8 @@ const LifestyleDeviceStage: React.FC<{
   screenLoopFrames?: number;
   deviceClips?: TimelineClip[];
   playbackRate?: number;
-}> = ({screenSrc, format, scene, transitionOpacity, screenLoopFrames, deviceClips = [], playbackRate = 1}) => {
+  deviceLift?: number;
+}> = ({screenSrc, format, scene, transitionOpacity, screenLoopFrames, deviceClips = [], playbackRate = 1, deviceLift = 0}) => {
   const frame = useCurrentFrame();
   const {fps} = useVideoConfig();
   const isLandscape = format === 'landscape';
@@ -734,7 +757,7 @@ const LifestyleDeviceStage: React.FC<{
     );
   }
 
-  const stageStyle = deviceStageStyle(format, scene.device, scene.angle);
+  const stageStyle = deviceStageStyle(format, scene.device, scene.angle, deviceLift);
 
   return (
     <div
@@ -794,7 +817,7 @@ const LifestyleDeviceStage: React.FC<{
   );
 };
 
-const LifestyleCta: React.FC<{cta: string; isLandscape: boolean; isSquare: boolean; startFrame: number}> = ({cta, isLandscape, isSquare, startFrame}) => {
+const LifestyleCta: React.FC<{cta: string; isLandscape: boolean; isSquare: boolean; startFrame: number; ctaLift?: number}> = ({cta, isLandscape, isSquare, startFrame, ctaLift = 0}) => {
   const frame = useCurrentFrame();
   const {fps} = useVideoConfig();
   const pop = spring({frame: frame - startFrame, fps, config: {damping: 15, stiffness: 140}});
@@ -804,7 +827,7 @@ const LifestyleCta: React.FC<{cta: string; isLandscape: boolean; isSquare: boole
         position: 'absolute',
         left: isLandscape ? 160 : 0,
         right: isLandscape ? 'auto' : 0,
-        bottom: isLandscape ? 72 : isSquare ? 54 : 74,
+        bottom: liftBottom(isLandscape ? 72 : isSquare ? 54 : 74, ctaLift),
         display: 'flex',
         justifyContent: 'center',
         pointerEvents: 'none',
@@ -898,7 +921,7 @@ function deviceShellStyle(device: NonNullable<Scene['device']>, isLandscape: boo
   };
 }
 
-function deviceStageStyle(format: PromoProps['format'], device: NonNullable<Scene['device']>, angle: NonNullable<Scene['angle']>): React.CSSProperties {
+function deviceStageStyle(format: PromoProps['format'], device: NonNullable<Scene['device']>, angle: NonNullable<Scene['angle']>, deviceLift = 0): React.CSSProperties {
   const isLandscape = format === 'landscape';
   const isSquare = format === 'square';
   const style: React.CSSProperties = isLandscape
@@ -919,6 +942,10 @@ function deviceStageStyle(format: PromoProps['format'], device: NonNullable<Scen
 
   if (angle === 'floating-hero') {
     style.bottom = '18%';
+  }
+
+  if (device !== 'full-screen') {
+    style.bottom = liftBottom(style.bottom, deviceLift);
   }
 
   return style;

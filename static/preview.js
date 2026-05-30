@@ -92,6 +92,7 @@ const clips = Array.isArray(project.clips) ? project.clips : [];
 const duration = Math.max(5, Number(project.durationSeconds || 30));
 const thumbnailBumper = normalizeThumbnailBumper(project.thumbnailBumper, project.assets?.thumbnail);
 const totalDuration = duration + (thumbnailBumper ? thumbnailBumper.durationSeconds : 0);
+const layout = normalizeLayoutSettings(project.layout);
 const ctaStart = Math.max(0, duration - 5.6);
 const captionTimeline = scenes.map((scene) => {
   const words = sceneWords(scene);
@@ -115,6 +116,8 @@ let previewSettingsSaveTimer = null;
 
 stage.classList.remove('vertical', 'landscape', 'square');
 stage.classList.add(project.format || 'vertical');
+stage.style.setProperty('--device-lift', `${layout.deviceLift}%`);
+stage.style.setProperty('--cta-lift', `${layout.ctaLift}%`);
 backgroundImage.src = assetUrl(BACKGROUNDS[DEFAULT_SCENE.background]);
 
 if (project.assets?.screen) {
@@ -150,6 +153,14 @@ function normalizeThumbnailBumper(settings, asset) {
     position,
     durationSeconds,
     fit: settings?.fit === 'contain' ? 'contain' : 'cover',
+  };
+}
+
+function normalizeLayoutSettings(settings) {
+  const number = (value, max) => Math.min(max, Math.max(0, Number(value || 0)));
+  return {
+    deviceLift: number(settings?.deviceLift, 16),
+    ctaLift: number(settings?.ctaLift, 12),
   };
 }
 

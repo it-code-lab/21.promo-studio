@@ -263,6 +263,7 @@ def normalize_project(project: dict[str, Any]) -> dict[str, Any]:
         normalized.get("thumbnailBumper"),
         normalized_assets.get("thumbnail"),
     )
+    normalized["layout"] = normalize_layout_settings(normalized.get("layout"))
     normalized["previewSettings"] = normalize_preview_settings(normalized.get("previewSettings"))
     return normalized
 
@@ -561,6 +562,22 @@ def normalize_thumbnail_bumper(value: Any, thumbnail_asset: Any = None) -> dict[
         "position": position,
         "durationSeconds": duration_seconds,
         "fit": fit,
+    }
+
+
+def normalize_layout_settings(value: Any) -> dict[str, Any]:
+    data = value if isinstance(value, dict) else {}
+
+    def lift(key: str, maximum: float) -> float:
+        try:
+            number = float(data.get(key, 0) or 0)
+        except (TypeError, ValueError):
+            number = 0
+        return round(min(maximum, max(0.0, number)), 2)
+
+    return {
+        "deviceLift": lift("deviceLift", 16),
+        "ctaLift": lift("ctaLift", 12),
     }
 
 
@@ -996,6 +1013,10 @@ def create_project():
             "durationSeconds": request.form.get("thumbnailBumperDuration", 0.5),
             "fit": request.form.get("thumbnailBumperFit", "cover"),
         }, f"projects/{project_id}/{thumbnail_filename}" if thumbnail_filename else None)
+        layout = normalize_layout_settings({
+            "deviceLift": request.form.get("layoutDeviceLift", 0),
+            "ctaLift": request.form.get("layoutCtaLift", 0),
+        })
         clips: list[dict[str, Any]] = []
         if isinstance(clip_rows, list):
             clips_dir = public_dir / "clips"
@@ -1053,6 +1074,7 @@ def create_project():
             "scenes": scenes,
             "clips": normalize_clips(clips),
             "thumbnailBumper": thumbnail_bumper,
+            "layout": layout,
             "previewSettings": normalize_preview_settings(None),
             "render": {
                 "lastStartedAt": None,
@@ -1218,6 +1240,7 @@ def render_project(project_id: str):
         "logoAsset": project.get("assets", {}).get("logo"),
         "thumbnailAsset": project.get("assets", {}).get("thumbnail"),
         "thumbnailBumper": project.get("thumbnailBumper"),
+        "layout": project.get("layout"),
         "scenes": project.get("scenes", []),
         "clips": project.get("clips", []),
         "previewSettings": project.get("previewSettings"),

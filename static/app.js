@@ -26,6 +26,8 @@ const thumbnailPreview = document.querySelector('#thumbnailPreview');
 const thumbnailPasteZone = document.querySelector('#thumbnailPasteZone');
 const thumbnailPasteHint = document.querySelector('#thumbnailPasteHint');
 const thumbnailBumperPosition = document.querySelector('#thumbnailBumperPosition');
+const layoutDeviceLiftInput = document.querySelector('[name="layoutDeviceLift"]');
+const layoutCtaLiftInput = document.querySelector('[name="layoutCtaLift"]');
 
 const BACKGROUND_PRESETS = [
   { id: 'reading-room', label: 'Reading room', thumb: '/preview-assets/assets/lifestyle-reading-room.png' },
@@ -300,6 +302,7 @@ function saveStudioGlobalSettings() {
     visual: globalVisualDesign(),
     caption: globalCaptionDesign(),
     pacing: scenePacingConfig({ writeBack: false }),
+    layout: layoutLiftConfig({ writeBack: false }),
   };
   try {
     localStorage.setItem(STUDIO_GLOBAL_SETTINGS_KEY, JSON.stringify(settings));
@@ -1004,6 +1007,29 @@ function initScenePacingControls() {
   });
 }
 
+function layoutLiftConfig({ writeBack = true } = {}) {
+  const deviceLift = clampNumber(Number(layoutDeviceLiftInput?.value || 0), 0, 16);
+  const ctaLift = clampNumber(Number(layoutCtaLiftInput?.value || 0), 0, 12);
+  if (writeBack) {
+    if (layoutDeviceLiftInput) layoutDeviceLiftInput.value = String(deviceLift);
+    if (layoutCtaLiftInput) layoutCtaLiftInput.value = String(ctaLift);
+  }
+  return { deviceLift, ctaLift };
+}
+
+function initLayoutLiftControls() {
+  const savedLayout = loadStudioGlobalSettings().layout || {};
+  if (layoutDeviceLiftInput && savedLayout.deviceLift !== undefined) layoutDeviceLiftInput.value = String(savedLayout.deviceLift);
+  if (layoutCtaLiftInput && savedLayout.ctaLift !== undefined) layoutCtaLiftInput.value = String(savedLayout.ctaLift);
+  layoutLiftConfig();
+  [layoutDeviceLiftInput, layoutCtaLiftInput].forEach((control) => {
+    control?.addEventListener('change', () => {
+      layoutLiftConfig();
+      saveStudioGlobalSettings();
+    });
+  });
+}
+
 function clampNumber(value, min, max) {
   if (!Number.isFinite(value)) return min;
   return Math.min(max, Math.max(min, value));
@@ -1346,5 +1372,6 @@ initThumbnailBumperControls();
 initGlobalVisualControls();
 initGlobalCaptionControls();
 initScenePacingControls();
+initLayoutLiftControls();
 loadSampleScenes();
 loadProjects();
