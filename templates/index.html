@@ -18,6 +18,7 @@
       <div class="studio-status">
         <span><i></i> Local preview</span>
         <span>Remotion ready</span>
+        <button id="themeToggleBtn" class="theme-toggle" type="button" aria-pressed="false">Light mode</button>
       </div>
     </header>
 
@@ -180,8 +181,6 @@
             <button type="button" id="addSceneBtn" class="secondary">+ Add scene</button>
             <button type="button" id="addSceneAfterBtn" class="secondary">+ Insert scene after selected</button>
             <button type="button" id="loadSampleBtn" class="secondary">Load sample scenes</button>
-            <button type="button" id="reflowScenesBtn" class="secondary">Reflow timings by order</button>
-            <button type="button" id="paceScenesBtn" class="secondary">Rebuild scene lengths</button>
             <button type="button" id="transcribeVoiceoverBtn" class="secondary">Generate from voiceover</button>
           </div>
 
@@ -209,8 +208,8 @@
               <thead>
                 <tr>
                   <th></th>
-                  <th>Start</th>
-                  <th>End</th>
+                  <th>Scene</th>
+                  <th>Length</th>
                   <th>Caption</th>
                   <th>Narration / notes</th>
                   <th></th>
@@ -228,8 +227,12 @@
             <span>Optional</span>
           </div>
 
-          <div class="scene-actions">
-            <button type="button" id="addClipBtn" class="secondary">+ Add clip</button>
+          <div class="helper-panel">
+            <div>
+              <strong>Add clips from any scene row</strong>
+              <p>Use the clip button beside a scene to insert b-roll, overlays, or temporary device-screen replacements directly after that scene. Drag clip rows below to reorder clips that share the same placement.</p>
+            </div>
+            <button type="button" id="addClipBtn" class="secondary">+ Add clip at start</button>
           </div>
 
           <div class="table-wrap">
@@ -237,7 +240,7 @@
               <thead>
                 <tr>
                   <th></th>
-                  <th>Place after</th>
+                  <th>Placement</th>
                   <th>Duration</th>
                   <th>Mode</th>
                   <th>Clip video</th>

@@ -1052,6 +1052,50 @@ kbd {
   transform: rotateX(18deg) rotateZ(-2deg);
 }
 
+.tablet-stage[data-device="full-screen"] {
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: auto;
+  height: auto;
+  max-width: none;
+  perspective: none;
+  animation: none;
+}
+
+.preview-stage.landscape .tablet-stage[data-device="full-screen"],
+.preview-stage.square .tablet-stage[data-device="full-screen"] {
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: auto;
+  height: auto;
+  max-width: none;
+}
+
+.tablet-stage[data-device="full-screen"] .tablet-shell {
+  width: 100%;
+  height: 100%;
+  aspect-ratio: auto;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: #020617;
+  box-shadow: none;
+  transform: none;
+}
+
+.tablet-stage[data-device="full-screen"] .screen-canvas {
+  border-radius: 0;
+}
+
+.tablet-stage[data-device="full-screen"] .tablet-glass,
+.tablet-stage[data-device="full-screen"] .tablet-shell::after {
+  display: none;
+}
+
 .tablet-stage[data-angle="low-desk-right"] .tablet-shell {
   transform: rotateX(54deg) rotateZ(7deg);
 }
@@ -1066,6 +1110,10 @@ kbd {
 
 .tablet-stage[data-angle="floating-hero"] .tablet-shell {
   transform: rotateX(8deg) rotateZ(-4deg);
+}
+
+.tablet-stage[data-device="full-screen"][data-angle] .tablet-shell {
+  transform: none;
 }
 
 .scene-camera[data-motion="slow-push-in"] { animation: cameraPush 8s ease-in-out both; }

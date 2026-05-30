@@ -7,6 +7,7 @@ The workflow is preview-first: upload a screen recording, optionally upload voic
 ## Features
 
 - Local Flask studio UI
+- Dark/light Studio theme toggle with saved preference
 - Project-based workflow with saved JSON metadata
 - Screen recording upload
 - Optional voiceover upload
@@ -144,20 +145,20 @@ Use **Scene pacing** before generating captions to control how fast scene visual
 - **Preferred** is the target scene length for most caption groups.
 - **Maximum** prevents any merged transcript scene from running too long.
 
-After captions are generated, **Rebuild scene lengths** can merge existing short scenes using the same pacing controls while preserving word-level voiceover timings.
+Generated caption scenes are paced automatically, so very short transcript fragments are merged before they appear in the Studio.
 
 ### 4. Edit Scenes
 
-Scenes define the main timeline. Each scene has:
+Scenes define the main timeline. Each scene shows:
 
-- start time
-- end time
+- scene number
+- scene length
 - caption text
 - narration/notes
 
 You can add scenes manually, insert a scene after another scene, delete scenes, and drag scenes to reorder them.
 
-Use **Reflow timings by order** when you only want to make existing scene timings continuous. Use **Rebuild scene lengths** when transcript scenes are too short and should be merged into calmer visual chunks.
+Start and end times are managed automatically. For voiceover projects, timings come from the transcript and word-level audio timestamps. For manual scenes, the Studio assigns sequential timing based on the scene order and length.
 
 Scene visual overrides are collapsed by default to keep the UI clean. Expand **Scene visual overrides** when you want a scene-specific background, device, angle, motion, transition, or caption override.
 
@@ -199,7 +200,13 @@ Clip modes:
 - **Background**: replaces the scene background.
 - **Overlay**: appears as a picture-in-picture style clip.
 
-You do not need to manually provide exact start/end times for basic clip insertion. Use the placement and duration controls to position clips in the timeline.
+Use **C+** on a scene row to add a clip directly after that scene. Use **S+** when you want to insert another regular scene. The clip list under **Timeline clips** remains editable, so you can adjust placement, duration, mode, label, and file after insertion. Clip rows are draggable when you want to reorder clips with the same placement.
+
+You do not need to manually provide exact start/end times for basic clip insertion. Use the scene-row clip button, placement, and duration controls to position clips in the timeline.
+
+### Studio Theme
+
+Use the header theme toggle to switch between dark and light Studio modes. The selected theme is remembered in browser storage.
 
 ### 8. Save the Project
 
@@ -382,6 +389,52 @@ Main local endpoints:
   - Delete project, assets, and rendered MP4.
 - `POST /api/transcribe`
   - Transcribe uploaded voiceover into timed scenes.
+
+## License and Gumroad Release
+
+Developer/local checkouts do not require a license by default.
+
+Packaged Gumroad releases require activation when the release contains:
+
+```text
+license_required.flag
+```
+
+The release build script adds this flag to the packaged copy only. Buyers activate with the Gumroad buyer email and license key. Activation is stored locally in `license.json`.
+
+Buyer archives intentionally include only buyer-safe documentation. Seller notes, release internals, and the development README stay out of the packaged Gumroad file.
+
+Seller release command:
+
+```bash
+python scripts/build_release_jar.py
+```
+
+Optional:
+
+```bash
+python scripts/build_release_jar.py --version 1.0.0 --gumroad-url https://yourname.gumroad.com/l/your-product
+```
+
+Optional online Gumroad license verification:
+
+```bash
+python scripts/build_release_jar.py --version 1.0.0 --gumroad-url https://yourname.gumroad.com/l/your-product --gumroad-product-permalink your-product
+```
+
+The release archive is written to:
+
+```text
+dist/advertisement-video-studio-<version>.zip
+```
+
+See:
+
+- `docs/USER_GUIDE.md`
+- `docs/SELLER_GUIDE.md`
+- `docs/TROUBLESHOOTING.md`
+- `docs/RELEASE_CONTENTS.md`
+- `LICENSE.txt`
 
 ## Troubleshooting
 

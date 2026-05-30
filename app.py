@@ -12,7 +12,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from flask import Flask, abort, jsonify, render_template, request, send_from_directory
+import requests
+from flask import Flask, abort, jsonify, redirect, render_template, request, send_from_directory
 from slugify import slugify
 from werkzeug.utils import secure_filename
 
@@ -22,6 +23,9 @@ OUTPUTS_DIR = BASE_DIR / "outputs"
 REMOTION_DIR = BASE_DIR / "remotion"
 REMOTION_PUBLIC_DIR = REMOTION_DIR / "public"
 REMOTION_PUBLIC_PROJECTS = REMOTION_DIR / "public" / "projects"
+LICENSE_REQUIRED_FLAG = BASE_DIR / "license_required.flag"
+LICENSE_FILE = BASE_DIR / "license.json"
+RELEASE_FILE = BASE_DIR / "release.json"
 
 ALLOWED_VIDEO_EXTENSIONS = {"mp4", "mov", "webm", "mkv"}
 ALLOWED_AUDIO_EXTENSIONS = {"mp3", "wav", "m4a", "aac", "ogg"}
@@ -34,6 +38,8 @@ DEFAULT_MAX_SCENE_SECONDS = 7.0
 RENDER_PROGRESS_RE = re.compile(r"(Rendered|Encoded)\s+(\d+)\s*/\s*(\d+)", re.IGNORECASE)
 RENDER_PHASE_RE = re.compile(r"^(Bundling|Copying public dir|Getting composition)", re.IGNORECASE)
 RENDER_THREADS: dict[str, threading.Thread] = {}
+DEFAULT_RENDER_TIMEOUT_MS = 120_000
+DEFAULT_RENDER_CONCURRENCY = 2
 
 DEFAULT_SCENE_DESIGN: dict[str, Any] = {
     "background": "reading-room",
@@ -50,6 +56,14 @@ DEFAULT_SCENE_DESIGN: dict[str, Any] = {
     "captionAccent": "none",
     "captionAnimationAmount": 1.4,
 }
+
+DEVICE_PRESETS = [
+    "tablet-pro",
+    "laptop-silver",
+    "phone-modern",
+    "browser-window",
+    "full-screen",
+]
 
 CAPTION_STYLE_PRESETS = [
     "white-chip",
@@ -82,6 +96,105 @@ app.config["MAX_CONTENT_LENGTH"] = 2 * 1024 * 1024 * 1024  # 2GB for screen reco
 
 for path in [PROJECTS_DIR, OUTPUTS_DIR, REMOTION_PUBLIC_PROJECTS]:
     path.mkdir(parents=True, exist_ok=True)
+
+
+def read_release_info() -> dict[str, Any]:
+    if not RELEASE_FILE.exists():
+        return {}
+    try:
+        data = json.loads(RELEASE_FILE.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def license_required() -> bool:
+    env_value = str(os.environ.get("PROMO_STUDIO_REQUIRE_LICENSE", "")).strip().lower()
+    if env_value in {"1", "true", "yes", "on"}:
+        return True
+    return bool(read_release_info().get("licenseRequired")) or LICENSE_REQUIRED_FLAG.exists()
+
+
+def read_license() -> dict[str, Any]:
+    if not LICENSE_FILE.exists():
+        return {}
+    try:
+        data = json.loads(LICENSE_FILE.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def license_is_valid(data: dict[str, Any] | None = None) -> bool:
+    data = data if isinstance(data, dict) else read_license()
+    key = str(data.get("licenseKey") or "").strip()
+    email = str(data.get("email") or "").strip()
+    accepted = bool(data.get("acceptedTerms"))
+    return accepted and len(key) >= 12 and "@" in email and "." in email.rsplit("@", 1)[-1]
+
+
+def gumroad_product_permalink() -> str:
+    env_value = str(os.environ.get("PROMO_STUDIO_GUMROAD_PRODUCT_PERMALINK", "")).strip()
+    if env_value:
+        return env_value
+    return str(read_release_info().get("gumroadProductPermalink") or "").strip()
+
+
+def verify_gumroad_license(license_key: str) -> dict[str, Any]:
+    product_permalink = gumroad_product_permalink()
+    if not product_permalink:
+        return {"enabled": False, "verified": False}
+
+    try:
+        response = requests.post(
+            "https://api.gumroad.com/v2/licenses/verify",
+            data={
+                "product_permalink": product_permalink,
+                "license_key": license_key,
+                "increment_uses": "true",
+            },
+            timeout=12,
+        )
+        payload = response.json()
+    except Exception as exc:
+        return {
+            "enabled": True,
+            "verified": False,
+            "error": f"Could not contact Gumroad to verify this license. Please check your internet connection and try again. ({exc})",
+        }
+
+    if response.ok and payload.get("success") is True:
+        purchase = payload.get("purchase") if isinstance(payload.get("purchase"), dict) else {}
+        return {
+            "enabled": True,
+            "verified": True,
+            "uses": payload.get("uses"),
+            "purchaseEmail": purchase.get("email"),
+            "productName": purchase.get("product_name"),
+            "saleTimestamp": purchase.get("created_at"),
+        }
+
+    return {
+        "enabled": True,
+        "verified": False,
+        "error": str(payload.get("message") or "Gumroad could not verify this license key."),
+    }
+
+
+def wants_json_response() -> bool:
+    return request.path.startswith("/api/") or request.accept_mimetypes.best == "application/json"
+
+
+@app.before_request
+def enforce_license_gate():
+    if not license_required() or license_is_valid():
+        return None
+    allowed_prefixes = ("/license", "/api/license", "/static/")
+    if request.path.startswith(allowed_prefixes):
+        return None
+    if wants_json_response():
+        return jsonify({"error": "License activation required.", "licenseUrl": "/license"}), 402
+    return redirect("/license")
 
 
 def file_ext(filename: str) -> str:
@@ -269,6 +382,22 @@ def parse_render_progress(line: str) -> dict[str, Any] | None:
     if phase_match:
         return {"phase": phase_match.group(1).lower(), "progress": 4}
     return None
+
+
+def render_timeout_ms() -> int:
+    try:
+        value = int(os.environ.get("PROMO_STUDIO_RENDER_TIMEOUT_MS", DEFAULT_RENDER_TIMEOUT_MS))
+    except (TypeError, ValueError):
+        value = DEFAULT_RENDER_TIMEOUT_MS
+    return max(30_000, min(600_000, value))
+
+
+def render_concurrency() -> int:
+    try:
+        value = int(os.environ.get("PROMO_STUDIO_RENDER_CONCURRENCY", DEFAULT_RENDER_CONCURRENCY))
+    except (TypeError, ValueError):
+        value = DEFAULT_RENDER_CONCURRENCY
+    return max(1, min(8, value))
 
 
 def run_remotion_render(project_id: str, cmd: list[str], log_path: Path, output_path: Path, started: float) -> None:
@@ -525,7 +654,7 @@ def with_scene_design(scene: dict[str, Any], index: int) -> dict[str, Any]:
     defaults = {
         **DEFAULT_SCENE_DESIGN,
         "background": BACKGROUND_PRESETS[index % len(BACKGROUND_PRESETS)],
-        "device": ["tablet-pro", "laptop-silver", "phone-modern", "browser-window"][index % 4],
+        "device": DEVICE_PRESETS[index % 4],
         "angle": ["low-desk-left", "front-center", "floating-hero", "low-desk-right"][index % 4],
         "motion": ["slow-push-in", "screen-focus", "device-tilt", "pan-left"][index % 4],
         "motionAmount": [2.2, 2.2, 2.2, 2.2][index % 4],
@@ -707,6 +836,34 @@ def transcribe_audio_to_scenes(
 @app.route("/")
 def index():
     return render_template("index.html")
+
+
+@app.get("/license")
+def license_page():
+    return render_template("license.html", license_required=license_required(), activated=license_is_valid(), license_data=read_license())
+
+
+@app.post("/api/license")
+def activate_license():
+    payload = request.get_json(silent=True) or request.form
+    license_key = str(payload.get("licenseKey") or "").strip()
+    email = str(payload.get("email") or "").strip()
+    accepted_terms = str(payload.get("acceptedTerms") or "").lower() in {"1", "true", "yes", "on"} or bool(payload.get("acceptedTerms") is True)
+    data = {
+        "licenseKey": license_key,
+        "email": email,
+        "acceptedTerms": accepted_terms,
+        "activatedAt": datetime.now().isoformat(timespec="seconds"),
+        "source": "gumroad",
+    }
+    if not license_is_valid(data):
+        return jsonify({"error": "Enter the Gumroad license key, buyer email, and accept the license terms."}), 400
+    verification = verify_gumroad_license(license_key)
+    if verification.get("enabled") and not verification.get("verified"):
+        return jsonify({"error": verification.get("error") or "Gumroad could not verify this license key."}), 400
+    data["gumroadVerification"] = verification
+    LICENSE_FILE.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    return jsonify({"ok": True, "redirectUrl": "/"})
 
 
 @app.get("/preview/<project_id>")
@@ -1046,6 +1203,8 @@ def render_project(project_id: str):
         composition_id,
         str(output_path),
         f"--props={props_path}",
+        f"--timeout={render_timeout_ms()}",
+        f"--concurrency={render_concurrency()}",
         "--overwrite",
     ]
 

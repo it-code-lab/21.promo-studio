@@ -31,7 +31,7 @@ type Scene = {
     | 'evening-desk'
     | 'kitchen-counter'
     | 'creator-studio';
-  device?: 'tablet-pro' | 'phone-modern' | 'laptop-silver' | 'browser-window';
+  device?: 'tablet-pro' | 'phone-modern' | 'laptop-silver' | 'browser-window' | 'full-screen';
   angle?: 'low-desk-left' | 'low-desk-right' | 'front-center' | 'floating-hero';
   motion?: 'slow-push-in' | 'screen-focus' | 'pan-left' | 'pan-right' | 'device-tilt' | 'cta-push';
   motionAmount?: number;
@@ -677,6 +677,21 @@ const LifestyleDeviceStage: React.FC<{
   const isSquare = format === 'square';
   const intro = spring({frame: frame - 8, fps, config: {damping: 18, stiffness: 95}});
   const pushIn = interpolate(intro, [0, 1], [0.9, 1]);
+
+  if (scene.device === 'full-screen') {
+    return (
+      <AbsoluteFill style={{opacity: intro * transitionOpacity, background: '#020617'}}>
+        <ScreenVideo
+          screenSrc={screenSrc}
+          radius={0}
+          zoom={Number(scene.screenZoom || sceneDefaults.screenZoom)}
+          loopFrames={screenLoopFrames}
+          clips={deviceClips}
+          playbackRate={playbackRate}
+        />
+      </AbsoluteFill>
+    );
+  }
 
   const stageStyle = deviceStageStyle(format, scene.device, scene.angle);
 

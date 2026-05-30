@@ -20,6 +20,7 @@ const globalCaptionAccent = document.querySelector('#globalCaptionAccent');
 const minSceneSecondsInput = document.querySelector('#minSceneSeconds');
 const targetSceneSecondsInput = document.querySelector('#targetSceneSeconds');
 const maxSceneSecondsInput = document.querySelector('#maxSceneSeconds');
+const themeToggleBtn = document.querySelector('#themeToggleBtn');
 
 const BACKGROUND_PRESETS = [
   { id: 'reading-room', label: 'Reading room', thumb: '/preview-assets/assets/lifestyle-reading-room.png' },
@@ -39,6 +40,7 @@ const DEVICE_PRESETS = [
   { id: 'phone-modern', label: 'Phone' },
   { id: 'laptop-silver', label: 'Laptop' },
   { id: 'browser-window', label: 'Browser' },
+  { id: 'full-screen', label: 'Full screen' },
 ];
 
 const ANGLE_PRESETS = [
@@ -127,6 +129,24 @@ const DEFAULT_DESIGN = {
 };
 const DEFAULT_CLIP_DURATION = 4;
 const STUDIO_GLOBAL_SETTINGS_KEY = 'promo-studio-global-settings:v1';
+const STUDIO_THEME_KEY = 'promo-studio-theme:v1';
+const VISUAL_MIRROR_FIELDS = [
+  { key: 'background', selector: '.scene-background', defaultValue: DEFAULT_DESIGN.background },
+  { key: 'device', selector: '.scene-device', defaultValue: DEFAULT_DESIGN.device },
+  { key: 'angle', selector: '.scene-angle', defaultValue: DEFAULT_DESIGN.angle },
+  { key: 'motion', selector: '.scene-motion', defaultValue: DEFAULT_DESIGN.motion },
+  { key: 'motionAmount', selector: '.scene-motion-amount', defaultValue: DEFAULT_DESIGN.motionAmount, alwaysGlobal: true },
+  { key: 'transition', selector: '.scene-transition', defaultValue: DEFAULT_DESIGN.transition },
+  { key: 'screenZoom', selector: '.scene-screen-zoom', defaultValue: DEFAULT_DESIGN.screenZoom, alwaysGlobal: true },
+];
+const CAPTION_MIRROR_FIELDS = [
+  { key: 'captionStyle', selector: '.scene-caption-style', defaultValue: DEFAULT_DESIGN.captionStyle },
+  { key: 'captionPosition', selector: '.scene-caption-position', defaultValue: DEFAULT_DESIGN.captionPosition },
+  { key: 'captionAnimation', selector: '.scene-caption-animation', defaultValue: DEFAULT_DESIGN.captionAnimation },
+  { key: 'captionSize', selector: '.scene-caption-size', defaultValue: DEFAULT_DESIGN.captionSize },
+  { key: 'captionAccent', selector: '.scene-caption-accent', defaultValue: DEFAULT_DESIGN.captionAccent },
+  { key: 'captionAnimationAmount', selector: '.scene-caption-animation-amount', defaultValue: DEFAULT_DESIGN.captionAnimationAmount },
+];
 let selectedSceneId = '';
 let dragSceneId = '';
 let dragClipId = '';
@@ -139,6 +159,34 @@ function showMessage(text, type = '') {
 function hideMessage() {
   message.className = 'message hidden';
   message.textContent = '';
+}
+
+function initStudioTheme() {
+  let savedTheme = 'dark';
+  try {
+    savedTheme = localStorage.getItem(STUDIO_THEME_KEY) || 'dark';
+  } catch {
+    savedTheme = 'dark';
+  }
+  applyStudioTheme(savedTheme === 'light' ? 'light' : 'dark');
+  themeToggleBtn?.addEventListener('click', () => {
+    const nextTheme = document.body.dataset.theme === 'light' ? 'dark' : 'light';
+    applyStudioTheme(nextTheme);
+  });
+}
+
+function applyStudioTheme(theme) {
+  document.body.dataset.theme = theme;
+  try {
+    localStorage.setItem(STUDIO_THEME_KEY, theme);
+  } catch {
+    // Ignore storage failures; the toggle should still work for this session.
+  }
+  if (themeToggleBtn) {
+    const isLight = theme === 'light';
+    themeToggleBtn.textContent = isLight ? 'Dark mode' : 'Light mode';
+    themeToggleBtn.setAttribute('aria-pressed', String(isLight));
+  }
 }
 
 function globalVisualDesign({ fallback = false } = {}) {
@@ -194,6 +242,17 @@ function saveStudioGlobalSettings() {
   }
 }
 
+function handleGlobalVisualChange() {
+  syncGlobalRangeLabels();
+  syncSceneControlsWithGlobals();
+  saveStudioGlobalSettings();
+}
+
+function handleGlobalCaptionChange() {
+  syncSceneControlsWithGlobals();
+  saveStudioGlobalSettings();
+}
+
 function initGlobalVisualControls() {
   const savedVisual = loadStudioGlobalSettings().visual || {};
   if (globalBackgrounds) {
@@ -208,16 +267,10 @@ function initGlobalVisualControls() {
   if (globalMotionAmount && savedVisual.motionAmount) globalMotionAmount.value = savedVisual.motionAmount;
   if (globalScreenZoom && savedVisual.screenZoom) globalScreenZoom.value = savedVisual.screenZoom;
   syncGlobalRangeLabels();
-  globalMotionAmount?.addEventListener('input', () => {
-    syncGlobalRangeLabels();
-    saveStudioGlobalSettings();
-  });
-  globalScreenZoom?.addEventListener('input', () => {
-    syncGlobalRangeLabels();
-    saveStudioGlobalSettings();
-  });
+  globalMotionAmount?.addEventListener('input', handleGlobalVisualChange);
+  globalScreenZoom?.addEventListener('input', handleGlobalVisualChange);
   [globalBackgrounds, globalDevices, globalAngle, globalMotion, globalTransition].forEach((control) => {
-    control?.addEventListener('change', saveStudioGlobalSettings);
+    control?.addEventListener('change', handleGlobalVisualChange);
   });
 }
 
@@ -235,7 +288,7 @@ function initGlobalCaptionControls() {
   if (globalCaptionSize) globalCaptionSize.innerHTML = renderOptions(CAPTION_SIZE_PRESETS, savedCaption.captionSize || DEFAULT_DESIGN.captionSize);
   if (globalCaptionAccent) globalCaptionAccent.innerHTML = renderOptions(CAPTION_ACCENT_PRESETS, savedCaption.captionAccent || DEFAULT_DESIGN.captionAccent);
   [globalCaptionStyles, globalCaptionPosition, globalCaptionSize, globalCaptionAccent].forEach((control) => {
-    control?.addEventListener('change', saveStudioGlobalSettings);
+    control?.addEventListener('change', handleGlobalCaptionChange);
   });
 }
 
@@ -252,12 +305,17 @@ function addScene(scene = {}, options = {}) {
   tr.draggable = true;
   tr.innerHTML = `
     <td class="drag-cell"><button type="button" class="drag-handle" title="Drag scene">☰</button></td>
-    <td><input type="number" step="0.01" min="0" class="scene-start" value="${scene.start ?? ''}" /></td>
-    <td><input type="number" step="0.01" min="0" class="scene-end" value="${scene.end ?? ''}" /></td>
+    <td>
+      <span class="scene-number">Scene</span>
+      <input type="hidden" class="scene-start" value="${scene.start ?? ''}" />
+      <input type="hidden" class="scene-end" value="${scene.end ?? ''}" />
+    </td>
+    <td><span class="scene-duration">Auto</span></td>
     <td><textarea rows="2" class="scene-caption">${escapeHtml(scene.caption ?? '')}</textarea></td>
     <td><textarea rows="2" class="scene-narration">${escapeHtml(scene.narration ?? '')}</textarea></td>
     <td class="row-actions">
-      <button type="button" class="insert-after small-icon-btn" title="Insert scene after this">+</button>
+      <button type="button" class="insert-after small-icon-btn" title="Insert scene after this">S+</button>
+      <button type="button" class="insert-clip-after small-icon-btn" title="Insert clip after this scene">C+</button>
       <button type="button" class="delete">×</button>
     </td>
   `;
@@ -343,6 +401,8 @@ function addScene(scene = {}, options = {}) {
     dragSceneId = '';
     tr.classList.remove('dragging');
     [...sceneTableBody.querySelectorAll('.drag-over')].forEach(row => row.classList.remove('drag-over'));
+    normalizeSceneTimeline();
+    updateSceneNumbers();
     refreshClipPlacementOptions();
   });
   tr.addEventListener('dragover', (event) => {
@@ -359,6 +419,11 @@ function addScene(scene = {}, options = {}) {
     event.stopPropagation();
     addScene(afterSceneDefaults(rowId), { afterSceneId: rowId });
   });
+  tr.querySelector('.insert-clip-after').addEventListener('click', (event) => {
+    event.stopPropagation();
+    addClip({ placement: rowId });
+    showMessage('Clip row added below. Choose the clip video file, then save the project.', 'success');
+  });
   tr.querySelector('.delete').addEventListener('click', (event) => {
     event.stopPropagation();
     designRow.remove();
@@ -367,6 +432,8 @@ function addScene(scene = {}, options = {}) {
       selectedSceneId = sceneRows().at(-1)?.dataset.sceneId || '';
       if (selectedSceneId) selectScene(selectedSceneId);
     }
+    normalizeSceneTimeline();
+    updateSceneNumbers();
     refreshClipPlacementOptions();
   });
   designRow.querySelector('.scene-motion-amount').addEventListener('input', (event) => {
@@ -378,11 +445,14 @@ function addScene(scene = {}, options = {}) {
   designRow.querySelector('.scene-caption-animation-amount').addEventListener('input', (event) => {
     event.target.closest('.zoom-field').querySelector('strong').textContent = `${Number(event.target.value).toFixed(2)}×`;
   });
+  bindSceneLocalValueTracking(designRow);
   designRow.querySelector('.scene-visual-override').addEventListener('change', () => updateSceneOverrideState(designRow));
   designRow.querySelector('.scene-caption-override').addEventListener('change', () => updateSceneOverrideState(designRow));
   updateSceneOverrideState(designRow);
   insertScenePair(tr, designRow, options.afterSceneId);
   selectScene(rowId);
+  normalizeSceneTimeline();
+  updateSceneNumbers();
   refreshClipPlacementOptions();
 }
 
@@ -426,6 +496,103 @@ function renderDeviceOptions(presets, selected, name, options = {}) {
   `).join('');
 }
 
+function sceneDesignRows() {
+  return [...sceneTableBody.querySelectorAll('tr.scene-design-row')];
+}
+
+function fieldHost(designRow, selector) {
+  const field = designRow.querySelector(selector);
+  if (!field) return null;
+  if (field.type === 'radio') {
+    return field.closest('.thumb-options, .device-options, .caption-style-options');
+  }
+  return field;
+}
+
+function readSceneFieldValue(designRow, field) {
+  const control = designRow.querySelector(field.selector);
+  if (!control) return field.defaultValue;
+  if (control.type === 'radio') return checkedValue(designRow, field.selector, field.defaultValue);
+  return control.value || field.defaultValue;
+}
+
+function writeSceneFieldValue(designRow, field, value) {
+  const controls = [...designRow.querySelectorAll(field.selector)];
+  if (!controls.length) return;
+  if (controls[0].type === 'radio') {
+    const valueText = String(value ?? field.defaultValue);
+    controls.forEach((control) => {
+      control.checked = control.value === valueText;
+    });
+    if (!controls.some((control) => control.checked)) {
+      const fallback = controls.find((control) => control.value === String(field.defaultValue));
+      if (fallback) fallback.checked = true;
+    }
+    return;
+  }
+  controls[0].value = value ?? field.defaultValue;
+  updateRangeLabel(controls[0]);
+}
+
+function updateRangeLabel(control) {
+  if (!control || control.type !== 'range') return;
+  const label = control.closest('.zoom-field')?.querySelector('strong');
+  if (label) label.textContent = `${Number(control.value || 0).toFixed(2)}×`;
+}
+
+function rememberSceneLocalValue(designRow, field) {
+  const host = fieldHost(designRow, field.selector);
+  if (!host) return;
+  host.dataset.localValue = readSceneFieldValue(designRow, field);
+  host.dataset.userOverride = '1';
+  delete host.dataset.globalMirror;
+}
+
+function bindSceneLocalValueTracking(designRow) {
+  [...VISUAL_MIRROR_FIELDS, ...CAPTION_MIRROR_FIELDS].forEach((field) => {
+    designRow.querySelectorAll(field.selector).forEach((control) => {
+      control.addEventListener(control.type === 'range' ? 'input' : 'change', () => {
+        if (!control.disabled) rememberSceneLocalValue(designRow, field);
+      });
+    });
+  });
+}
+
+function mirrorFieldFromGlobal(designRow, field, globalValue, overrideActive) {
+  const host = fieldHost(designRow, field.selector);
+  if (!host || (overrideActive && host.dataset.userOverride === '1')) return;
+
+  const hasGlobalValue = field.alwaysGlobal || (globalValue !== '' && globalValue !== null && globalValue !== undefined);
+  if (hasGlobalValue) {
+    if (host.dataset.globalMirror !== '1') {
+      host.dataset.localValue = readSceneFieldValue(designRow, field);
+    }
+    writeSceneFieldValue(designRow, field, globalValue);
+    host.dataset.globalMirror = '1';
+    host.dataset.globalValue = String(globalValue ?? '');
+    return;
+  }
+
+  if (host.dataset.globalMirror === '1') {
+    writeSceneFieldValue(designRow, field, host.dataset.localValue || field.defaultValue);
+    delete host.dataset.globalMirror;
+    delete host.dataset.globalValue;
+  }
+}
+
+function syncSceneControlsWithGlobals(targetDesignRow = null) {
+  const visual = globalVisualDesign();
+  const caption = globalCaptionDesign();
+  const rows = targetDesignRow ? [targetDesignRow] : sceneDesignRows();
+
+  rows.forEach((designRow) => {
+    const visualOverride = designRow.querySelector('.scene-visual-override')?.checked;
+    const captionOverride = designRow.querySelector('.scene-caption-override')?.checked;
+    VISUAL_MIRROR_FIELDS.forEach((field) => mirrorFieldFromGlobal(designRow, field, visual[field.key], visualOverride));
+    CAPTION_MIRROR_FIELDS.forEach((field) => mirrorFieldFromGlobal(designRow, field, caption[field.key], captionOverride));
+  });
+}
+
 function updateSceneOverrideState(designRow) {
   const visualOverride = designRow.querySelector('.scene-visual-override')?.checked;
   const captionOverride = designRow.querySelector('.scene-caption-override')?.checked;
@@ -437,6 +604,7 @@ function updateSceneOverrideState(designRow) {
   });
   designRow.classList.toggle('visual-inherits-global', !visualOverride);
   designRow.classList.toggle('caption-inherits-global', !captionOverride);
+  syncSceneControlsWithGlobals(designRow);
 }
 
 function renderCaptionStyleOptions(presets, selected, name, className = 'scene-caption-style') {
@@ -476,6 +644,8 @@ function moveScenePair(sourceId, targetId) {
     target.before(source, sourceDesign);
   }
   selectScene(sourceId);
+  normalizeSceneTimeline();
+  updateSceneNumbers();
   refreshClipPlacementOptions();
 }
 
@@ -497,15 +667,49 @@ function afterSceneDefaults(rowId) {
   return { start: end, end: end + duration, caption: '', narration: '', ...globalSceneDesign() };
 }
 
+function updateSceneNumbers() {
+  sceneRows().forEach((row, index) => {
+    const start = Number(row.querySelector('.scene-start')?.value || 0);
+    const end = Number(row.querySelector('.scene-end')?.value || start);
+    const duration = Math.max(0, end - start);
+    const number = row.querySelector('.scene-number');
+    const length = row.querySelector('.scene-duration');
+    if (number) number.textContent = `Scene ${index + 1}`;
+    if (length) length.textContent = duration ? `${duration.toFixed(duration < 10 ? 2 : 1)}s` : 'Auto';
+  });
+}
+
+function normalizeSceneTimeline() {
+  const rows = sceneRows();
+  if (!rows.length) return;
+  if (rows.some((row) => hasVoiceoverWordTiming(parseWords(row.dataset.words)))) return;
+  let cursor = 0;
+  rows.forEach((row) => {
+    const startInput = row.querySelector('.scene-start');
+    const endInput = row.querySelector('.scene-end');
+    const oldStart = Number(startInput.value || cursor);
+    const oldEnd = Number(endInput.value || oldStart + 4);
+    const duration = Math.max(0.5, oldEnd - oldStart || 4);
+    startInput.value = Number(cursor.toFixed(2));
+    endInput.value = Number((cursor + duration).toFixed(2));
+    shiftStoredWords(row, cursor - oldStart);
+    cursor += duration;
+  });
+}
+
 function addClip(clip = {}) {
   const rowId = `clip_${Date.now()}_${Math.round(Math.random() * 100000)}`;
   const tr = document.createElement('tr');
   tr.className = 'clip-row';
   tr.dataset.clipId = rowId;
+  tr.dataset.preferredPlacement = clip.placement || 'start';
   tr.draggable = true;
   tr.innerHTML = `
     <td class="drag-cell"><button type="button" class="drag-handle" title="Drag clip">☰</button></td>
-    <td><select class="clip-placement"></select></td>
+    <td>
+      <span class="clip-placement-badge">Start</span>
+      <select class="clip-placement"></select>
+    </td>
     <td><input type="number" step="0.25" min="0.5" class="clip-duration" value="${clip.durationSeconds || DEFAULT_CLIP_DURATION}" /></td>
     <td><select class="clip-mode">${renderOptions(CLIP_MODE_PRESETS, clip.mode || 'device-screen')}</select></td>
     <td><input name="${rowId}" type="file" class="clip-file" accept="video/mp4,video/webm,video/quicktime,video/x-matroska" /></td>
@@ -533,8 +737,13 @@ function addClip(clip = {}) {
     moveClipRow(dragClipId, rowId);
   });
   tr.querySelector('.delete').addEventListener('click', () => tr.remove());
+  tr.querySelector('.clip-placement').addEventListener('change', () => {
+    tr.dataset.preferredPlacement = tr.querySelector('.clip-placement').value;
+    syncClipPlacementBadge(tr);
+  });
   clipTableBody.appendChild(tr);
   refreshClipPlacementOptions();
+  tr.querySelector('.clip-file')?.focus();
 }
 
 function moveClipRow(sourceId, targetId) {
@@ -560,11 +769,23 @@ function refreshClipPlacementOptions() {
     })),
   ];
   clipTableBody.querySelectorAll('.clip-placement').forEach((select) => {
-    const previous = select.value;
+    const row = select.closest('.clip-row');
+    const previous = row?.dataset.preferredPlacement || select.value;
     select.innerHTML = options.map((option) => `<option value="${option.value}">${option.label}</option>`).join('');
     const fallback = options.some((option) => option.value === selectedSceneId) ? selectedSceneId : (options[options.length - 1]?.value || 'start');
     select.value = options.some((option) => option.value === previous) ? previous : fallback;
+    if (row) {
+      row.dataset.preferredPlacement = select.value;
+      syncClipPlacementBadge(row);
+    }
   });
+}
+
+function syncClipPlacementBadge(row) {
+  const select = row.querySelector('.clip-placement');
+  const badge = row.querySelector('.clip-placement-badge');
+  if (!select || !badge) return;
+  badge.textContent = select.options[select.selectedIndex]?.textContent || 'Start';
 }
 
 function loadSampleScenes() {
@@ -578,10 +799,18 @@ function loadSampleScenes() {
     { start: 22, end: 26, caption: 'built from your real product', narration: 'Built from your real website or software recording.', background: 'meeting-room', device: 'browser-window', angle: 'front-center', motion: 'pan-right', motionAmount: 2.2, screenZoom: 1, transition: 'clean-cut', captionStyle: 'minimal-subtitle', captionPosition: 'bottom', captionAnimation: 'none', captionSize: 'standard', captionAccent: 'none', captionAnimationAmount: 1.2 },
     { start: 26, end: 30, caption: 'Try it free today', narration: 'Try it free today.', background: 'creator-studio', device: 'tablet-pro', angle: 'floating-hero', motion: 'cta-push', motionAmount: 2.2, screenZoom: 1, transition: 'soft-fade', captionStyle: 'device-callout', captionPosition: 'device', captionAnimation: 'none', captionSize: 'large', captionAccent: 'first-word', captionAnimationAmount: 1.8 },
   ].map((scene) => ({ ...scene, visualOverride: true, captionOverride: true })).forEach(addScene);
+  normalizeSceneTimeline();
+  updateSceneNumbers();
   refreshClipPlacementOptions();
 }
 
 function collectScenes() {
+  normalizeSceneTimeline();
+  updateSceneNumbers();
+  return collectSceneRows();
+}
+
+function collectSceneRows() {
   const globalVisual = globalVisualDesign();
   const globalCaption = globalCaptionDesign();
   const visualValue = (sceneValue, globalValue) => globalValue || sceneValue;
@@ -630,6 +859,8 @@ function hasVoiceoverWordTiming(words) {
 }
 
 function collectClips() {
+  normalizeSceneTimeline();
+  updateSceneNumbers();
   const sceneTimings = sceneRows().map((row) => ({
     id: row.dataset.sceneId,
     start: Number(row.querySelector('.scene-start').value || 0),
@@ -677,6 +908,7 @@ function reflowSceneTimings() {
     shiftStoredWords(row, cursor - oldStart);
     cursor += duration;
   });
+  updateSceneNumbers();
   refreshClipPlacementOptions();
 }
 
@@ -711,10 +943,12 @@ function clampNumber(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
 
-function rebuildScenesByPacing() {
-  const scenes = collectScenes().sort((a, b) => a.start - b.start);
+function rebuildScenesByPacing(options = {}) {
+  const silent = Boolean(options.silent);
+  normalizeSceneTimeline();
+  const scenes = collectSceneRows().sort((a, b) => a.start - b.start);
   if (!scenes.length) {
-    showMessage('Add or generate scenes before rebuilding scene lengths.', 'error');
+    if (!silent) showMessage('Add or generate scenes before rebuilding scene lengths.', 'error');
     return;
   }
 
@@ -756,11 +990,13 @@ function rebuildScenesByPacing() {
   sceneTableBody.innerHTML = '';
   selectedSceneId = '';
   rebuilt.forEach(addScene);
+  normalizeSceneTimeline();
+  updateSceneNumbers();
   refreshClipPlacementOptions();
   if (projectForm.elements.durationSeconds) {
     projectForm.elements.durationSeconds.value = Math.ceil(Math.max(Number(projectForm.elements.durationSeconds.value || 0), lastSceneEnd()));
   }
-  showMessage(`Rebuilt ${scenes.length} scenes into ${rebuilt.length} paced scenes. Word timings were preserved.`, 'success');
+  if (!silent) showMessage(`Rebuilt ${scenes.length} scenes into ${rebuilt.length} paced scenes. Word timings were preserved.`, 'success');
 }
 
 function mergeSceneGroup(group) {
@@ -1031,11 +1267,12 @@ document.querySelector('#addSceneAfterBtn').addEventListener('click', () => {
 });
 document.querySelector('#addClipBtn').addEventListener('click', () => addClip());
 document.querySelector('#loadSampleBtn').addEventListener('click', loadSampleScenes);
-document.querySelector('#reflowScenesBtn').addEventListener('click', reflowSceneTimings);
-document.querySelector('#paceScenesBtn').addEventListener('click', rebuildScenesByPacing);
+document.querySelector('#reflowScenesBtn')?.addEventListener('click', reflowSceneTimings);
+document.querySelector('#paceScenesBtn')?.addEventListener('click', rebuildScenesByPacing);
 document.querySelector('#transcribeVoiceoverBtn').addEventListener('click', event => generateScenesFromVoiceover(event.target));
 document.querySelector('#refreshProjectsBtn').addEventListener('click', loadProjects);
 
+initStudioTheme();
 initGlobalVisualControls();
 initGlobalCaptionControls();
 initScenePacingControls();
