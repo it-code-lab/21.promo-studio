@@ -31,6 +31,8 @@ ALLOWED_VIDEO_EXTENSIONS = {"mp4", "mov", "webm", "mkv"}
 ALLOWED_AUDIO_EXTENSIONS = {"mp3", "wav", "m4a", "aac", "ogg"}
 ALLOWED_IMAGE_EXTENSIONS = {"png", "jpg", "jpeg", "webp"}
 CLIP_MODES = {"device-screen", "full-screen", "background", "overlay"}
+THUMBNAIL_BUMPER_POSITIONS = {"none", "start", "end"}
+THUMBNAIL_BUMPER_FITS = {"cover", "contain"}
 MAX_PROJECT_DURATION_SECONDS = 600
 DEFAULT_MIN_SCENE_SECONDS = 2.5
 DEFAULT_TARGET_SCENE_SECONDS = 4.5
@@ -257,6 +259,10 @@ def normalize_project(project: dict[str, Any]) -> dict[str, Any]:
         normalized["template"] = "lifestyle"
     clips = normalized.get("clips", [])
     normalized["clips"] = normalize_clips(clips) if isinstance(clips, list) else []
+    normalized["thumbnailBumper"] = normalize_thumbnail_bumper(
+        normalized.get("thumbnailBumper"),
+        normalized_assets.get("thumbnail"),
+    )
     normalized["previewSettings"] = normalize_preview_settings(normalized.get("previewSettings"))
     return normalized
 
@@ -324,7 +330,7 @@ def ensure_render_state(project: dict[str, Any]) -> dict[str, Any]:
 
 def render_duration_frames(project: dict[str, Any]) -> int:
     fps = int(project.get("fps") or 30)
-    duration_seconds = float(project.get("durationSeconds") or 30)
+    duration_seconds = total_project_duration_seconds(project)
     playback_rate = float(project.get("previewSettings", {}).get("playbackRate") or 1)
     playback_rate = min(1.5, max(0.75, playback_rate))
     return max(5 * fps, min(MAX_PROJECT_DURATION_SECONDS * fps, round((duration_seconds / playback_rate) * fps)))
@@ -534,6 +540,40 @@ def normalize_clips(clips: list[Any]) -> list[dict[str, Any]]:
             "durationSeconds": clip.get("durationSeconds"),
         })
     return normalized
+
+
+def normalize_thumbnail_bumper(value: Any, thumbnail_asset: Any = None) -> dict[str, Any]:
+    data = value if isinstance(value, dict) else {}
+    position = str(data.get("position") or "none")
+    if position not in THUMBNAIL_BUMPER_POSITIONS:
+        position = "none"
+    fit = str(data.get("fit") or "cover")
+    if fit not in THUMBNAIL_BUMPER_FITS:
+        fit = "cover"
+    try:
+        duration_seconds = float(data.get("durationSeconds", 0.5) or 0.5)
+    except (TypeError, ValueError):
+        duration_seconds = 0.5
+    duration_seconds = round(min(2.0, max(0.1, duration_seconds)), 2)
+    if not thumbnail_asset:
+        position = "none"
+    return {
+        "position": position,
+        "durationSeconds": duration_seconds,
+        "fit": fit,
+    }
+
+
+def thumbnail_bumper_duration(project: dict[str, Any]) -> float:
+    assets = project.get("assets") if isinstance(project.get("assets"), dict) else {}
+    bumper = normalize_thumbnail_bumper(project.get("thumbnailBumper"), assets.get("thumbnail"))
+    if bumper.get("position") in {"start", "end"}:
+        return float(bumper.get("durationSeconds") or 0.5)
+    return 0.0
+
+
+def total_project_duration_seconds(project: dict[str, Any]) -> float:
+    return min(MAX_PROJECT_DURATION_SECONDS, float(project.get("durationSeconds") or 30) + thumbnail_bumper_duration(project))
 
 
 def bounded_duration(seconds: float, minimum: int = 5, maximum: int = MAX_PROJECT_DURATION_SECONDS) -> int:
@@ -950,6 +990,12 @@ def create_project():
         scenes = [with_scene_design(scene, index) for index, scene in enumerate(scenes)]
         background_music_filename = save_upload(request.files.get("backgroundMusic"), public_dir, "background-music", ALLOWED_AUDIO_EXTENSIONS)
         logo_filename = save_upload(request.files.get("logo"), public_dir, "logo", ALLOWED_IMAGE_EXTENSIONS)
+        thumbnail_filename = save_upload(request.files.get("thumbnailImage"), public_dir, "thumbnail", ALLOWED_IMAGE_EXTENSIONS)
+        thumbnail_bumper = normalize_thumbnail_bumper({
+            "position": request.form.get("thumbnailBumperPosition", "none"),
+            "durationSeconds": request.form.get("thumbnailBumperDuration", 0.5),
+            "fit": request.form.get("thumbnailBumperFit", "cover"),
+        }, f"projects/{project_id}/{thumbnail_filename}" if thumbnail_filename else None)
         clips: list[dict[str, Any]] = []
         if isinstance(clip_rows, list):
             clips_dir = public_dir / "clips"
@@ -1002,9 +1048,11 @@ def create_project():
                 "voiceoverDurationSeconds": voiceover_duration,
                 "backgroundMusic": f"projects/{project_id}/{background_music_filename}" if background_music_filename else None,
                 "logo": f"projects/{project_id}/{logo_filename}" if logo_filename else None,
+                "thumbnail": f"projects/{project_id}/{thumbnail_filename}" if thumbnail_filename else None,
             },
             "scenes": scenes,
             "clips": normalize_clips(clips),
+            "thumbnailBumper": thumbnail_bumper,
             "previewSettings": normalize_preview_settings(None),
             "render": {
                 "lastStartedAt": None,
@@ -1168,6 +1216,8 @@ def render_project(project_id: str):
         "voiceoverAsset": project.get("assets", {}).get("voiceover"),
         "backgroundMusicAsset": project.get("assets", {}).get("backgroundMusic"),
         "logoAsset": project.get("assets", {}).get("logo"),
+        "thumbnailAsset": project.get("assets", {}).get("thumbnail"),
+        "thumbnailBumper": project.get("thumbnailBumper"),
         "scenes": project.get("scenes", []),
         "clips": project.get("clips", []),
         "previewSettings": project.get("previewSettings"),

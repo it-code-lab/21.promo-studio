@@ -7,8 +7,11 @@ const defaultDurationInFrames = 30 * fps;
 const maxDurationInFrames = 600 * fps;
 const resolveDuration = (props: PromoProps) => {
   const seconds = Number(props.durationSeconds || 30);
+  const bumper = props.thumbnailAsset && (props.thumbnailBumper?.position === 'start' || props.thumbnailBumper?.position === 'end')
+    ? Math.min(2, Math.max(0.1, Number(props.thumbnailBumper?.durationSeconds || 0.5)))
+    : 0;
   const playbackRate = Math.min(1.5, Math.max(0.75, Number(props.previewSettings?.playbackRate || 1)));
-  return Math.max(5 * fps, Math.min(maxDurationInFrames, Math.round((seconds / playbackRate) * fps)));
+  return Math.max(5 * fps, Math.min(maxDurationInFrames, Math.round(((seconds + bumper) / playbackRate) * fps)));
 };
 
 export const Root: React.FC = () => {

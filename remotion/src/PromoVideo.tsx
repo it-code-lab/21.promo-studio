@@ -61,6 +61,12 @@ type TimelineClip = {
   durationSeconds?: number | null;
 };
 
+type ThumbnailBumper = {
+  position?: 'none' | 'start' | 'end';
+  durationSeconds?: number;
+  fit?: 'cover' | 'contain';
+};
+
 export type PromoProps = {
   title: string;
   productName: string;
@@ -75,6 +81,8 @@ export type PromoProps = {
   voiceoverAsset?: string | null;
   backgroundMusicAsset?: string | null;
   logoAsset?: string | null;
+  thumbnailAsset?: string | null;
+  thumbnailBumper?: ThumbnailBumper;
   scenes: Scene[];
   clips?: TimelineClip[];
   previewSettings?: PreviewSettings;
@@ -113,6 +121,8 @@ export const defaultPromoProps: PromoProps = {
   voiceoverAsset: null,
   backgroundMusicAsset: null,
   logoAsset: null,
+  thumbnailAsset: null,
+  thumbnailBumper: {position: 'none', durationSeconds: 0.5, fit: 'cover'},
   previewSettings: {
     captions: {style: '', position: '', wordsPerGroup: 3, highlightMode: 'word', size: ''},
     audio: {voiceoverEnabled: true, voiceoverVolume: 0.9, musicEnabled: true, musicVolume: 0.18},
@@ -171,6 +181,31 @@ function safeStatic(asset?: string | null): string | null {
   return asset ? staticFile(asset) : null;
 }
 
+type ResolvedThumbnailBumper = {
+  position: 'start' | 'end';
+  durationSeconds: number;
+  fit: 'cover' | 'contain';
+};
+
+function resolveThumbnailBumper(settings: ThumbnailBumper | undefined, thumbnailSrc: string | null): ResolvedThumbnailBumper | null {
+  if (!thumbnailSrc) return null;
+  const position = settings?.position;
+  if (position !== 'start' && position !== 'end') return null;
+  return {
+    position,
+    durationSeconds: clampNumber(settings?.durationSeconds, 0.1, 2, 0.5),
+    fit: settings?.fit === 'contain' ? 'contain' : 'cover',
+  };
+}
+
+function contentSecondsFromProjectTime(projectSeconds: number, contentDurationSeconds: number, thumbnailBumper: ResolvedThumbnailBumper | null): number {
+  if (!thumbnailBumper) return projectSeconds;
+  if (thumbnailBumper.position === 'start') {
+    return Math.max(0, projectSeconds - thumbnailBumper.durationSeconds);
+  }
+  return Math.min(contentDurationSeconds, projectSeconds);
+}
+
 const commonTextShadow = '0 8px 30px rgba(0,0,0,0.35)';
 const backgroundAssets = {
   'reading-room': 'assets/lifestyle-reading-room.png',
@@ -189,7 +224,10 @@ export const PromoVideo: React.FC<PromoProps> = (props) => {
   const frame = useCurrentFrame();
   const {fps, width, height} = useVideoConfig();
   const renderPlaybackRate = clampNumber(props.previewSettings?.playbackRate, 0.75, 1.5, 1);
-  const seconds = (frame / fps) * renderPlaybackRate;
+  const thumbnailSrc = safeStatic(props.thumbnailAsset);
+  const thumbnailBumper = resolveThumbnailBumper(props.thumbnailBumper, thumbnailSrc);
+  const projectSeconds = (frame / fps) * renderPlaybackRate;
+  const seconds = contentSecondsFromProjectTime(projectSeconds, props.durationSeconds, thumbnailBumper);
   const scene = applyPreviewCaptionSettings(designedScene(props.scenes, seconds), props.previewSettings);
   const clips = Array.isArray(props.clips) ? props.clips : [];
   const screenSrc = safeStatic(props.screenAsset);
@@ -198,7 +236,7 @@ export const PromoVideo: React.FC<PromoProps> = (props) => {
   const logoSrc = safeStatic(props.logoAsset);
 
   if (props.template === 'lifestyle') {
-    return <LifestylePromo {...props} screenSrc={screenSrc} voiceSrc={voiceSrc} musicSrc={musicSrc} logoSrc={logoSrc} />;
+    return <LifestylePromo {...props} screenSrc={screenSrc} voiceSrc={voiceSrc} musicSrc={musicSrc} logoSrc={logoSrc} thumbnailSrc={thumbnailSrc} resolvedThumbnailBumper={thumbnailBumper} />;
   }
 
   const entrance = spring({frame, fps, config: {damping: 18, stiffness: 120}});
@@ -293,17 +331,19 @@ export const PromoVideo: React.FC<PromoProps> = (props) => {
       </div>
 
       {ctaVisible ? <CtaEndCard cta={props.cta} isLandscape={isLandscape} /> : null}
-      {voiceSrc ? <Audio src={voiceSrc} /> : null}
-      {musicSrc ? <Audio src={musicSrc} volume={0.18} /> : null}
+      {voiceSrc ? <TimelineAudio src={voiceSrc} playbackRate={renderPlaybackRate} contentDurationSeconds={props.durationSeconds} alignWithContent={false} /> : null}
+      {musicSrc ? <TimelineAudio src={musicSrc} volume={0.18} thumbnailBumper={thumbnailBumper} playbackRate={renderPlaybackRate} contentDurationSeconds={props.durationSeconds} /> : null}
+      <ThumbnailBumperOverlay thumbnailSrc={thumbnailSrc} thumbnailBumper={thumbnailBumper} contentDurationSeconds={props.durationSeconds} playbackRate={renderPlaybackRate} />
     </AbsoluteFill>
   );
 };
 
-const LifestylePromo: React.FC<PromoProps & {screenSrc: string | null; voiceSrc: string | null; musicSrc: string | null; logoSrc: string | null}> = (props) => {
+const LifestylePromo: React.FC<PromoProps & {screenSrc: string | null; voiceSrc: string | null; musicSrc: string | null; logoSrc: string | null; thumbnailSrc: string | null; resolvedThumbnailBumper: ResolvedThumbnailBumper | null}> = (props) => {
   const frame = useCurrentFrame();
   const {fps} = useVideoConfig();
   const playbackRate = clampNumber(props.previewSettings?.playbackRate, 0.75, 1.5, 1);
-  const seconds = (frame / fps) * playbackRate;
+  const projectSeconds = (frame / fps) * playbackRate;
+  const seconds = contentSecondsFromProjectTime(projectSeconds, props.durationSeconds, props.resolvedThumbnailBumper);
   const timelineFrame = Math.round(seconds * fps);
   const scene = applyPreviewCaptionSettings(designedScene(props.scenes, seconds), props.previewSettings);
   const clips = Array.isArray(props.clips) ? props.clips : [];
@@ -401,8 +441,9 @@ const LifestylePromo: React.FC<PromoProps & {screenSrc: string | null; voiceSrc:
       </div>
 
       {ctaVisible ? <LifestyleCta cta={props.cta} isLandscape={isLandscape} isSquare={isSquare} startFrame={Math.round(ctaStartSeconds * fps)} /> : null}
-      {props.voiceSrc && props.previewSettings?.audio?.voiceoverEnabled !== false ? <Audio src={props.voiceSrc} volume={clampNumber(props.previewSettings?.audio?.voiceoverVolume, 0, 1, 0.9)} playbackRate={playbackRate} /> : null}
-      {props.musicSrc && props.previewSettings?.audio?.musicEnabled !== false ? <Audio src={props.musicSrc} volume={clampNumber(props.previewSettings?.audio?.musicVolume, 0, 1, 0.18)} playbackRate={playbackRate} /> : null}
+      {props.voiceSrc && props.previewSettings?.audio?.voiceoverEnabled !== false ? <TimelineAudio src={props.voiceSrc} volume={clampNumber(props.previewSettings?.audio?.voiceoverVolume, 0, 1, 0.9)} playbackRate={playbackRate} contentDurationSeconds={props.durationSeconds} alignWithContent={false} /> : null}
+      {props.musicSrc && props.previewSettings?.audio?.musicEnabled !== false ? <TimelineAudio src={props.musicSrc} volume={clampNumber(props.previewSettings?.audio?.musicVolume, 0, 1, 0.18)} playbackRate={playbackRate} thumbnailBumper={props.resolvedThumbnailBumper} contentDurationSeconds={props.durationSeconds} /> : null}
+      <ThumbnailBumperOverlay thumbnailSrc={props.thumbnailSrc} thumbnailBumper={props.resolvedThumbnailBumper} contentDurationSeconds={props.durationSeconds} playbackRate={playbackRate} />
     </AbsoluteFill>
   );
 };
@@ -934,6 +975,52 @@ function deviceRadius(device: NonNullable<Scene['device']>, isLandscape: boolean
   if (device === 'phone-modern') return 24;
   return 26;
 }
+
+const TimelineAudio: React.FC<{
+  src: string;
+  volume?: number;
+  playbackRate?: number;
+  thumbnailBumper?: ResolvedThumbnailBumper | null;
+  contentDurationSeconds: number;
+  alignWithContent?: boolean;
+}> = ({src, volume, playbackRate = 1, thumbnailBumper, contentDurationSeconds, alignWithContent = true}) => {
+  const {fps} = useVideoConfig();
+  const audio = <Audio src={src} volume={volume} playbackRate={playbackRate} />;
+  if (!alignWithContent) return audio;
+  const from = thumbnailBumper?.position === 'start'
+    ? Math.max(1, Math.round((thumbnailBumper.durationSeconds / playbackRate) * fps))
+    : 0;
+  const durationInFrames = Math.max(1, Math.round((contentDurationSeconds / playbackRate) * fps));
+  return <Sequence from={from} durationInFrames={durationInFrames}>{audio}</Sequence>;
+};
+
+const ThumbnailBumperOverlay: React.FC<{
+  thumbnailSrc: string | null;
+  thumbnailBumper: ResolvedThumbnailBumper | null;
+  contentDurationSeconds: number;
+  playbackRate: number;
+}> = ({thumbnailSrc, thumbnailBumper, contentDurationSeconds, playbackRate}) => {
+  const frame = useCurrentFrame();
+  const {fps} = useVideoConfig();
+  if (!thumbnailSrc || !thumbnailBumper) return null;
+  const projectSeconds = (frame / fps) * playbackRate;
+  const isActive = thumbnailBumper.position === 'start'
+    ? projectSeconds < thumbnailBumper.durationSeconds
+    : projectSeconds >= contentDurationSeconds && projectSeconds < contentDurationSeconds + thumbnailBumper.durationSeconds;
+  if (!isActive) return null;
+  return (
+    <AbsoluteFill style={{backgroundColor: '#020617', zIndex: 50}}>
+      <Img
+        src={thumbnailSrc}
+        style={{
+          width: '100%',
+          height: '100%',
+          objectFit: thumbnailBumper.fit,
+        }}
+      />
+    </AbsoluteFill>
+  );
+};
 
 const TimelineClips: React.FC<{
   clips: TimelineClip[];

@@ -21,6 +21,11 @@ const minSceneSecondsInput = document.querySelector('#minSceneSeconds');
 const targetSceneSecondsInput = document.querySelector('#targetSceneSeconds');
 const maxSceneSecondsInput = document.querySelector('#maxSceneSeconds');
 const themeToggleBtn = document.querySelector('#themeToggleBtn');
+const thumbnailInput = document.querySelector('#thumbnailInput');
+const thumbnailPreview = document.querySelector('#thumbnailPreview');
+const thumbnailPasteZone = document.querySelector('#thumbnailPasteZone');
+const thumbnailPasteHint = document.querySelector('#thumbnailPasteHint');
+const thumbnailBumperPosition = document.querySelector('#thumbnailBumperPosition');
 
 const BACKGROUND_PRESETS = [
   { id: 'reading-room', label: 'Reading room', thumb: '/preview-assets/assets/lifestyle-reading-room.png' },
@@ -150,6 +155,9 @@ const CAPTION_MIRROR_FIELDS = [
 let selectedSceneId = '';
 let dragSceneId = '';
 let dragClipId = '';
+let thumbnailClipboardFile = null;
+let thumbnailPreviewUrl = '';
+let thumbnailPositionTouched = false;
 
 function showMessage(text, type = '') {
   message.textContent = text;
@@ -159,6 +167,64 @@ function showMessage(text, type = '') {
 function hideMessage() {
   message.className = 'message hidden';
   message.textContent = '';
+}
+
+function initThumbnailBumperControls() {
+  thumbnailBumperPosition?.addEventListener('change', () => {
+    thumbnailPositionTouched = true;
+  });
+  thumbnailInput?.addEventListener('change', () => {
+    const file = thumbnailInput.files?.[0] || null;
+    thumbnailClipboardFile = null;
+    updateThumbnailPreview(file, file ? 'Thumbnail image selected.' : 'Upload an image or focus here and paste with Ctrl+V.');
+  });
+  document.addEventListener('paste', handleThumbnailPaste);
+}
+
+function handleThumbnailPaste(event) {
+  const active = document.activeElement;
+  if (active && ['INPUT', 'TEXTAREA', 'SELECT'].includes(active.tagName) && active !== thumbnailInput) return;
+  const item = [...(event.clipboardData?.items || [])].find((entry) => entry.type.startsWith('image/'));
+  if (!item) return;
+  const file = item.getAsFile();
+  if (!file) return;
+  event.preventDefault();
+  const ext = file.type.split('/')[1] || 'png';
+  const pastedFile = new File([file], `thumbnail-paste.${ext}`, { type: file.type });
+  setThumbnailFile(pastedFile, 'Pasted thumbnail image.');
+}
+
+function setThumbnailFile(file, statusText) {
+  thumbnailClipboardFile = file;
+  if (thumbnailInput) {
+    try {
+      const transfer = new DataTransfer();
+      transfer.items.add(file);
+      thumbnailInput.files = transfer.files;
+      thumbnailClipboardFile = null;
+    } catch {
+      // Older browsers may not allow assigning FileList; submit handling appends this file.
+    }
+  }
+  updateThumbnailPreview(file, statusText);
+}
+
+function updateThumbnailPreview(file, statusText) {
+  if (thumbnailPreviewUrl) URL.revokeObjectURL(thumbnailPreviewUrl);
+  thumbnailPreviewUrl = '';
+  if (file && thumbnailPreview) {
+    thumbnailPreviewUrl = URL.createObjectURL(file);
+    thumbnailPreview.src = thumbnailPreviewUrl;
+    thumbnailPreview.classList.remove('hidden');
+    thumbnailPasteZone?.classList.remove('muted');
+    if (thumbnailBumperPosition && !thumbnailPositionTouched && thumbnailBumperPosition.value === 'none') {
+      thumbnailBumperPosition.value = 'start';
+    }
+  } else {
+    thumbnailPreview?.classList.add('hidden');
+    thumbnailPasteZone?.classList.add('muted');
+  }
+  if (thumbnailPasteHint) thumbnailPasteHint.textContent = statusText;
 }
 
 function initStudioTheme() {
@@ -1241,6 +1307,9 @@ projectForm.addEventListener('submit', async (event) => {
   }
   const clips = collectClips();
   const formData = new FormData(projectForm);
+  if (thumbnailClipboardFile) {
+    formData.set('thumbnailImage', thumbnailClipboardFile, thumbnailClipboardFile.name || 'thumbnail-paste.png');
+  }
   formData.set('scenes', JSON.stringify(scenes));
   formData.set('clips', JSON.stringify(clips));
   const submitBtn = projectForm.querySelector('button[type="submit"]');
@@ -1273,6 +1342,7 @@ document.querySelector('#transcribeVoiceoverBtn').addEventListener('click', even
 document.querySelector('#refreshProjectsBtn').addEventListener('click', loadProjects);
 
 initStudioTheme();
+initThumbnailBumperControls();
 initGlobalVisualControls();
 initGlobalCaptionControls();
 initScenePacingControls();

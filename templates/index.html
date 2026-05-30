@@ -110,6 +110,36 @@
             </label>
           </section>
 
+          <section class="thumbnail-bumper-panel">
+            <label id="thumbnailPasteZone" class="upload-box muted thumbnail-upload" tabindex="0">
+              <span>Optional thumbnail frame</span>
+              <input id="thumbnailInput" name="thumbnailImage" type="file" accept="image/*" />
+              <img id="thumbnailPreview" class="thumbnail-preview hidden" alt="" />
+              <small id="thumbnailPasteHint">Upload an image or focus here and paste with Ctrl+V.</small>
+            </label>
+            <div class="thumbnail-settings-grid">
+              <label>
+                Add thumbnail
+                <select id="thumbnailBumperPosition" name="thumbnailBumperPosition">
+                  <option value="none" selected>Do not add</option>
+                  <option value="start">At beginning</option>
+                  <option value="end">At end</option>
+                </select>
+              </label>
+              <label>
+                Duration seconds
+                <input id="thumbnailBumperDuration" name="thumbnailBumperDuration" type="number" min="0.1" max="2" step="0.1" value="0.5" />
+              </label>
+              <label>
+                Image fit
+                <select id="thumbnailBumperFit" name="thumbnailBumperFit">
+                  <option value="cover" selected>Fill frame</option>
+                  <option value="contain">Fit entire image</option>
+                </select>
+              </label>
+            </div>
+          </section>
+
           <div class="panel-title small">
             <div>
               <span class="section-kicker">Step 3</span>

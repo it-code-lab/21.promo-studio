@@ -10,6 +10,7 @@ const backgroundImage = document.querySelector('#backgroundImage');
 const logoImage = document.querySelector('#logoImage');
 const captionChip = document.querySelector('#captionChip');
 const ctaPill = document.querySelector('#ctaPill');
+const thumbnailBumperImage = document.querySelector('#thumbnailBumperImage');
 const playBtn = document.querySelector('#playBtn');
 const pauseBtn = document.querySelector('#pauseBtn');
 const resumeBtn = document.querySelector('#resumeBtn');
@@ -89,6 +90,8 @@ const CAPTION_STYLE_PRESETS = [
 const scenes = Array.isArray(project.scenes) ? project.scenes : [];
 const clips = Array.isArray(project.clips) ? project.clips : [];
 const duration = Math.max(5, Number(project.durationSeconds || 30));
+const thumbnailBumper = normalizeThumbnailBumper(project.thumbnailBumper, project.assets?.thumbnail);
+const totalDuration = duration + (thumbnailBumper ? thumbnailBumper.durationSeconds : 0);
 const ctaStart = Math.max(0, duration - 5.6);
 const captionTimeline = scenes.map((scene) => {
   const words = sceneWords(scene);
@@ -131,7 +134,39 @@ if (project.assets?.logo) {
   logoImage.classList.remove('hidden');
 }
 
+if (thumbnailBumper && thumbnailBumperImage) {
+  thumbnailBumperImage.src = assetUrl(project.assets.thumbnail);
+  thumbnailBumperImage.style.objectFit = thumbnailBumper.fit;
+}
+
 ctaPill.textContent = project.cta || 'Try it free today';
+
+function normalizeThumbnailBumper(settings, asset) {
+  if (!asset) return null;
+  const position = settings?.position;
+  if (position !== 'start' && position !== 'end') return null;
+  const durationSeconds = Math.min(2, Math.max(0.1, Number(settings?.durationSeconds || 0.5)));
+  return {
+    position,
+    durationSeconds,
+    fit: settings?.fit === 'contain' ? 'contain' : 'cover',
+  };
+}
+
+function contentTimeFromPreviewTime(seconds) {
+  if (!thumbnailBumper) return Math.min(duration, Math.max(0, seconds));
+  if (thumbnailBumper.position === 'start') {
+    return Math.min(duration, Math.max(0, seconds - thumbnailBumper.durationSeconds));
+  }
+  return Math.min(duration, Math.max(0, seconds));
+}
+
+function isThumbnailBumperTime(seconds) {
+  if (!thumbnailBumper) return false;
+  return thumbnailBumper.position === 'start'
+    ? seconds < thumbnailBumper.durationSeconds
+    : seconds >= duration && seconds < totalDuration;
+}
 
 function activeSceneEntry(seconds) {
   const entry = captionTimeline.find((item) => seconds >= Number(item.scene.start || 0) && seconds < Number(item.scene.end || 0))
@@ -267,20 +302,23 @@ function wordProgress(word, seconds) {
 
 function updatePreview() {
   const seconds = currentProjectTime();
-  const entry = activeSceneEntry(seconds);
+  const contentSeconds = contentTimeFromPreviewTime(seconds);
+  const bumperActive = isThumbnailBumperTime(seconds);
+  const entry = activeSceneEntry(contentSeconds);
   const scene = entry.scene;
   applySceneDesign(scene);
-  const activeDeviceClip = activeClip('device-screen', seconds);
-  updateDeviceClipSource(activeDeviceClip, seconds);
-  updateTimelineClips(seconds);
+  const activeDeviceClip = activeClip('device-screen', contentSeconds);
+  updateDeviceClipSource(activeDeviceClip, contentSeconds);
+  updateTimelineClips(contentSeconds);
   drawDeviceScreen(activeDeviceClip);
-  setCaption(scene?.caption || project.title, scene, seconds, entry.words);
+  setCaption(scene?.caption || project.title, scene, contentSeconds, entry.words);
   setTraySelected(effectiveCaptionStyle(scene));
   setTimingBadge(entry.timingSource);
   updateTransport(seconds);
-  ctaPill.classList.toggle('hidden', seconds < ctaStart);
+  ctaPill.classList.toggle('hidden', bumperActive || contentSeconds < ctaStart);
+  thumbnailBumperImage?.classList.toggle('hidden', !bumperActive);
 
-  if (seconds >= duration) {
+  if (seconds >= totalDuration) {
     stopPreview({ reset: false, render: false });
   } else if (playbackState === 'playing') {
     animationFrame = requestAnimationFrame(updatePreview);
@@ -328,7 +366,7 @@ function applySceneDesign(scene) {
   }
 
   const localDuration = Math.max(0.5, Number(scene.end || duration) - Number(scene.start || 0));
-  const localProgress = Math.min(1, Math.max(0, (currentProjectTime() - Number(scene.start || 0)) / localDuration));
+  const localProgress = Math.min(1, Math.max(0, (contentTimeFromPreviewTime(currentProjectTime()) - Number(scene.start || 0)) / localDuration));
   const zoomBase = Number(scene.screenZoom || DEFAULT_SCENE.screenZoom);
   if (screenCanvas) screenCanvas.style.transform = `translate3d(0, 0, 0) scale(${zoomBase})`;
 }
@@ -513,9 +551,9 @@ function mediaElements() {
 
 function currentProjectTime() {
   if (playbackState === 'playing') {
-    return Math.min(duration, Math.max(0, ((performance.now() - previewStartedAt) / 1000) * playbackRate));
+    return Math.min(totalDuration, Math.max(0, ((performance.now() - previewStartedAt) / 1000) * playbackRate));
   }
-  return Math.min(duration, Math.max(0, pausedProjectTime));
+  return Math.min(totalDuration, Math.max(0, pausedProjectTime));
 }
 
 function audibleElements() {
@@ -527,11 +565,12 @@ function audibleElements() {
 
 function syncAudioToVideo() {
   const seconds = currentProjectTime();
+  const contentSeconds = contentTimeFromPreviewTime(seconds);
   audibleElements().forEach((media) => {
     try {
       media.currentTime = media === musicAudio && media.duration && Number.isFinite(media.duration)
-        ? seconds % media.duration
-        : seconds;
+        ? contentSeconds % media.duration
+        : contentSeconds;
     } catch {
       // Some browsers disallow setting currentTime until metadata is ready.
     }
@@ -621,10 +660,11 @@ async function playSyncedMedia({ fromStart = false } = {}) {
   }
   previewStartedAt = performance.now() - (pausedProjectTime / playbackRate) * 1000;
   try {
+    const contentSeconds = contentTimeFromPreviewTime(pausedProjectTime);
     if (Number.isFinite(screenVideo.duration) && screenVideo.duration > 0) {
-      screenVideo.currentTime = pausedProjectTime % screenVideo.duration;
+      screenVideo.currentTime = contentSeconds % screenVideo.duration;
     } else {
-      screenVideo.currentTime = pausedProjectTime;
+      screenVideo.currentTime = contentSeconds;
     }
   } catch {
     // Ignore media that is not seekable yet.
@@ -632,7 +672,7 @@ async function playSyncedMedia({ fromStart = false } = {}) {
   playbackState = 'playing';
   applyPlaybackRate();
   syncAudioToVideo();
-  updateTimelineClips(pausedProjectTime);
+  updateTimelineClips(contentTimeFromPreviewTime(pausedProjectTime));
   applyAudioSettings();
   updatePlaybackButtons();
   const playPromises = [screenVideo, ...audibleElements()].map((media) => media.play().catch((error) => error));
@@ -809,19 +849,20 @@ function wait(ms) {
 }
 
 function seekPreview(seconds) {
-  pausedProjectTime = Math.min(duration, Math.max(0, Number(seconds) || 0));
+  pausedProjectTime = Math.min(totalDuration, Math.max(0, Number(seconds) || 0));
   if (playbackState === 'playing') {
     previewStartedAt = performance.now() - (pausedProjectTime / playbackRate) * 1000;
   }
   try {
+    const contentSeconds = contentTimeFromPreviewTime(pausedProjectTime);
     screenVideo.currentTime = Number.isFinite(screenVideo.duration) && screenVideo.duration > 0
-      ? pausedProjectTime % screenVideo.duration
-      : pausedProjectTime;
+      ? contentSeconds % screenVideo.duration
+      : contentSeconds;
   } catch {
     // Ignore media that is not seekable yet.
   }
   syncAudioToVideo();
-  updateTimelineClips(pausedProjectTime);
+  updateTimelineClips(contentTimeFromPreviewTime(pausedProjectTime));
   activeCaptionGroupKey = '';
   lastCaptionRenderKey = '';
   updatePreview();
@@ -838,9 +879,9 @@ function applyPlaybackRate() {
 }
 
 function updateTransport(seconds = currentProjectTime()) {
-  if (previewScrubber && !isScrubbing) previewScrubber.value = String(Math.min(duration, Math.max(0, seconds)));
+  if (previewScrubber && !isScrubbing) previewScrubber.value = String(Math.min(totalDuration, Math.max(0, seconds)));
   if (currentTimeLabel) currentTimeLabel.textContent = formatTime(seconds);
-  if (durationTimeLabel) durationTimeLabel.textContent = formatTime(duration);
+  if (durationTimeLabel) durationTimeLabel.textContent = formatTime(totalDuration);
 }
 
 function formatTime(seconds) {
@@ -983,7 +1024,7 @@ function wireAudioControls() {
 
 function wireTransportControls() {
   if (previewScrubber) {
-    previewScrubber.max = String(duration);
+    previewScrubber.max = String(totalDuration);
     previewScrubber.addEventListener('input', () => {
       isScrubbing = true;
       const seconds = Number(previewScrubber.value || 0);
@@ -1092,7 +1133,7 @@ screenVideo.addEventListener('loadedmetadata', () => {
 });
 
 screenVideo.addEventListener('loadeddata', () => {
-  drawDeviceScreen(activeClip('device-screen', currentProjectTime()));
+  drawDeviceScreen(activeClip('device-screen', contentTimeFromPreviewTime(currentProjectTime())));
 });
 
 screenVideo.addEventListener('play', () => {
@@ -1113,7 +1154,7 @@ screenVideo.addEventListener('seeked', () => {
   updatePreview();
 });
 deviceClipVideo?.addEventListener('loadeddata', () => {
-  drawDeviceScreen(activeClip('device-screen', currentProjectTime()));
+  drawDeviceScreen(activeClip('device-screen', contentTimeFromPreviewTime(currentProjectTime())));
 });
 playBtn?.addEventListener('click', () => playSyncedMedia({ fromStart: playbackState === 'stopped' }));
 pauseBtn?.addEventListener('click', pausePreview);
